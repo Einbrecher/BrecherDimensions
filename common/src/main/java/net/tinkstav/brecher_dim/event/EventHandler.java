@@ -10,6 +10,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
+import com.mojang.brigadier.CommandDispatcher;
+import net.minecraft.commands.CommandSourceStack;
 
 /**
  * Platform-agnostic event handler interface.
@@ -22,6 +24,15 @@ public interface EventHandler {
      */
     @ExpectPlatform
     static void registerEvents() {
+        throw new AssertionError("Platform implementation missing");
+    }
+    
+    /**
+     * Register commands with the platform's command system
+     * @param dispatcher The command dispatcher
+     */
+    @ExpectPlatform
+    static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
         throw new AssertionError("Platform implementation missing");
     }
     
