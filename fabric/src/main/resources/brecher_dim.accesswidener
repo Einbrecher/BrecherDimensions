@@ -1,0 +1,26 @@
+accessWidener v2 named
+# Brecher's Dimensions Access Widener for Fabric
+# Makes private fields accessible to avoid reflection
+
+# MinecraftServer fields
+accessible field net/minecraft/server/MinecraftServer registryAccess Lnet/minecraft/core/RegistryAccess$Frozen;
+accessible field net/minecraft/server/MinecraftServer levels Ljava/util/Map;
+accessible field net/minecraft/server/MinecraftServer executor Ljava/util/concurrent/Executor;
+accessible field net/minecraft/server/MinecraftServer storageSource Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;
+
+# ServerChunkCache fields for chunk management
+accessible field net/minecraft/server/level/ServerChunkCache toDrop Lit/unimi/dsi/fastutil/longs/LongSet;
+accessible field net/minecraft/server/level/ServerChunkCache chunkMap Lnet/minecraft/server/level/ChunkMap;
+
+# ServerLevel fields
+accessible field net/minecraft/server/level/ServerLevel sleepStatus Lnet/minecraft/server/level/SleepStatus;
+accessible field net/minecraft/server/level/ServerLevel entityManager Lnet/minecraft/world/level/entity/PersistentEntitySectionManager;
+
+# Registry fields for runtime registration
+accessible field net/minecraft/core/MappedRegistry frozen Z
+accessible field net/minecraft/core/MappedRegistry byKey Ljava/util/Map;
+accessible field net/minecraft/core/MappedRegistry byValue Lit/unimi/dsi/fastutil/objects/ObjectList;
+accessible field net/minecraft/core/MappedRegistry byLocation Ljava/util/Map;
+
+# ChunkGenerator access
+accessible field net/minecraft/world/level/levelgen/NoiseBasedChunkGenerator settings Lnet/minecraft/core/Holder;

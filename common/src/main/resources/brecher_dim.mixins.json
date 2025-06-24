@@ -2,7 +2,7 @@
     "required": true,
     "minVersion": "0.8",
     "package": "net.tinkstav.brecher_dim.mixin",
-    "compatibilityLevel": "JAVA_17",
+    "compatibilityLevel": "JAVA_21",
     "refmap": "brecher_dim.refmap.json",
     "mixins": [
         "MixinLevelStem",
