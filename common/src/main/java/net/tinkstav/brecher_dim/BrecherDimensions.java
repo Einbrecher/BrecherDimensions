@@ -3,8 +3,11 @@ package net.tinkstav.brecher_dim;
 import com.mojang.logging.LogUtils;
 import dev.architectury.injectables.annotations.ExpectPlatform;
 import net.minecraft.server.MinecraftServer;
+import net.tinkstav.brecher_dim.config.BrecherConfig;
 import net.tinkstav.brecher_dim.dimension.BrecherDimensionManager;
 import net.tinkstav.brecher_dim.dimension.DimensionRegistrar;
+import net.tinkstav.brecher_dim.dimension.ExplorationSeedManager;
+import net.tinkstav.brecher_dim.platform.NetworkingPlatform;
 import org.slf4j.Logger;
 
 import java.nio.file.Path;
@@ -15,12 +18,23 @@ import java.nio.file.Path;
  */
 public class BrecherDimensions {
     public static final String MOD_ID = "brecher_dim";
-    private static final Logger LOGGER = LogUtils.getLogger();
+    public static final Logger LOGGER = LogUtils.getLogger();
     
     private static BrecherDimensionManager dimensionManager;
     
     public static void init() {
-        LOGGER.info("Brecher's Dimensions initialized on platform: {}", getPlatformName());
+        LOGGER.info("Initializing Brecher's Dimensions on platform: {}", getPlatformName());
+        
+        // Initialize configuration
+        BrecherConfig.init();
+        
+        // Initialize seed manager
+        ExplorationSeedManager.init();
+        
+        // Initialize networking
+        NetworkingPlatform.init();
+        
+        LOGGER.info("Brecher's Dimensions core systems initialized");
     }
     
     /**
