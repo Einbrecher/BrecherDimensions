@@ -1,0 +1,57 @@
+# Brecher's Dimensions Test Commands
+# Copy and paste these commands during testing
+
+# === Basic Functionality Tests ===
+/explore help
+/explore list
+/explore status
+/explore minecraft:overworld
+/explore minecraft:the_nether
+/explore minecraft:the_end
+/explore return
+
+# === Admin Command Tests (Requires OP) ===
+/exploreadmin schedule
+/exploreadmin info minecraft:overworld_exploration
+/exploreadmin info minecraft:the_nether_exploration
+/exploreadmin info minecraft:the_end_exploration
+/exploreadmin returnall
+/exploreadmin cleanup
+/exploreadmin reset minecraft:overworld_exploration
+/exploreadmin resetall
+/exploreadmin forcereset
+
+# === Give Testing Items ===
+/give @p minecraft:bed 1
+/give @p minecraft:ender_chest 1
+/give @p minecraft:obsidian 64
+/give @p minecraft:flint_and_steel 1
+/give @p minecraft:ender_pearl 16
+/give @p minecraft:golden_apple 64
+/give @p minecraft:diamond_pickaxe{Enchantments:[{id:"minecraft:efficiency",lvl:5}]} 1
+
+# === Teleport Test Positions ===
+# High altitude test
+/tp @p ~ 200 ~
+
+# Void fall test
+/tp @p ~ -10 ~
+
+# Ocean test
+/execute in minecraft:overworld run tp @p 0 60 0
+
+# === Effect Tests ===
+/effect give @p minecraft:levitation 30 5
+/effect give @p minecraft:poison 30 2
+/effect give @p minecraft:fire_resistance 300 1
+
+# === Performance Monitoring ===
+/forge tps
+/forge track
+/forge entity list
+
+# === Debug Commands ===
+/gamerule sendCommandFeedback true
+/gamerule doMobSpawning false
+/gamerule doDaylightCycle false
+/time set day

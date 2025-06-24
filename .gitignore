@@ -1,0 +1,71 @@
+# Gradle
+.gradle/
+build/
+out/
+classes/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Eclipse
+.classpath
+.project
+.settings/
+bin/
+eclipse/
+
+# Visual Studio Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Minecraft
+run/
+run-data/
+runs/
+run_server/
+server/
+
+# Logs
+logs/
+*.log
+
+# Mod specific
+*.jar
+!gradle-wrapper.jar
+
+# Architectury
+.architectury-transformer/
+**/generated/
+
+# Mixins
+.mixin.out/
+
+# Other
+*.launch
+.cache/
+repo/
+.serena/
+
+# Avoid committing secret keys
+*.jks
+*.p12
+*.key
+
+# Temporary files
+*.tmp
+*.temp
+*~
+.*.swp
+.*.swo
+
+# OS generated files
+ehthumbs.db
+Icon?

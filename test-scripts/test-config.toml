@@ -1,0 +1,43 @@
+# Brecher's Dimensions Test Configuration
+# Fast reset times and all features enabled for testing
+
+[dimensions]
+# All dimensions enabled for testing
+enabledDimensions = ["minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"]
+
+# Shorter reset time for testing (1000 ticks = 50 seconds)
+resetTime = 1000
+
+# Maximum active dimensions (high for stress testing)
+maxActiveDimensions = 10
+
+[features]
+# All features enabled for comprehensive testing
+allowBedSpawn = false
+allowEnderChests = false
+allowShulkerBoxes = false
+keepInventoryOnReturn = true
+briefInvulnerability = true
+invulnerabilityTicks = 60
+
+[performance]
+# Aggressive settings for performance testing
+chunkUnloadDelay = 100
+entityCleanupInterval = 200
+memoryCheckInterval = 600
+aggressiveCleanup = true
+asyncDimensionLoading = true
+
+[messages]
+# Custom messages for easy identification during testing
+welcomeMessage = "TEST MODE: Welcome to exploration dimension %s! This dimension resets in %d minutes."
+returnMessage = "TEST MODE: Returned to %s"
+resetWarning = "TEST MODE: Exploration dimensions reset in %d minutes!"
+bedSpawnMessage = "TEST MODE: Cannot set spawn in exploration dimension!"
+portalBlockedMessage = "TEST MODE: This portal is blocked in exploration dimensions!"
+
+[advanced]
+# Debug settings
+debugLogging = true
+metricsEnabled = true
+backupBeforeReset = false
