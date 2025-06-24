@@ -1,0 +1,30 @@
+package net.tinkstav.brecher_dim.platform;
+
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.phys.Vec3;
+import net.tinkstav.brecher_dim.neoforge.NeoForgeTeleportPlatform;
+
+/**
+ * NeoForge implementation of TeleportPlatform
+ * This class is discovered by Architectury's @ExpectPlatform system
+ */
+public class TeleportPlatformImpl {
+    
+    public static boolean teleportToDimension(ServerPlayer player, ServerLevel destination, 
+                                            Vec3 position, float yRot, float xRot) {
+        return NeoForgeTeleportPlatform.teleportToDimension(player, destination, position, yRot, xRot);
+    }
+    
+    public static boolean supportsAuthorizedTeleports() {
+        return NeoForgeTeleportPlatform.supportsAuthorizedTeleports();
+    }
+    
+    public static void markTeleportAuthorized(ServerPlayer player) {
+        NeoForgeTeleportPlatform.markTeleportAuthorized(player);
+    }
+    
+    public static void clearTeleportAuthorization(ServerPlayer player) {
+        NeoForgeTeleportPlatform.clearTeleportAuthorization(player);
+    }
+}
