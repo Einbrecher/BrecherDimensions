@@ -88,7 +88,9 @@ A sophisticated Minecraft mod that creates temporary, resettable duplicate dimen
 Nature's Compass works correctly in exploration dimensions because biomes are placed using climate parameters that remain consistent regardless of the dimension's seed.
 
 ### Explorer's Compass  
-Explorer's Compass currently has limited functionality in exploration dimensions. Structures generate at different locations due to seed modifications, but the compass calculates positions using the original world seed. This mismatch means the compass cannot reliably find most structures.
+Explorer's Compass works correctly in exploration dimensions for most vanilla and modded structures. The mod properly handles the modified dimension seeds and can accurately locate structures in their new positions.
+
+**Known Edge Cases**: Some mods that use custom structure generation or placement systems (such as Applied Energistics 2 meteorites) may not be found correctly by Explorer's Compass in exploration dimensions.
 
 **Debug Command**: Use `/explorationadmin debug compass` to verify dimension seed information.
 
