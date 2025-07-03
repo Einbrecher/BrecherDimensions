@@ -1,39 +1,29 @@
-# Brecher's Dimensions
+# Brecher's Exploration Dimensions
 
-A sophisticated Minecraft mod that creates temporary, resettable duplicate dimensions at runtime. Built for Minecraft 1.21.1 with support for both Fabric and NeoForge, it solves the problem of limited exploration opportunities on servers with world borders by providing fresh, daily-resetting dimensions for players to explore.
+A Minecraft mod that creates a temporary set of Exploration Dimensions that automatically reset/refresh with a new generation seed at each server restart. This system ensures that Players consistently have access to "new," untouched world generation - whether it be to experience new features/updates, explore pristine POIs, ravage the landscape for resources, or go mining - without the downsides of ballooning world file sizes or the need to constantly prune chunks. Players can access the Exploration Dimensions via slash commands, and any stragglers are automatically evacuated when the dimensions cycle. 
+
+This mod looks to solve the problems server operators face when setting world borders or managing world size while also trying to give players enough room to explore. It uses mixins to override Minecraft's native restrictions when it comes to world seeds, so each successive Exploration Dimension truly is different from the last. Some basic popular mod compatibility (Xaero's, Corpse/Gravestone mods, Nature's/Exploration Compasses) is already built in, with more on the way.
 
 ## Features
 
-- **Runtime Dimension Creation**: Creates exploration dimensions dynamically at server startup without datapacks
-- **Daily Reset System**: Dimensions reset with new seeds each server restart (random or date-based)
-- **Memory-Only Design**: Exploration dimensions exist only in memory, never saved to disk
-- **Safe Teleportation**: Comprehensive safety features including spawn validation and emergency platforms
-- **Multi-Dimension Support**: Create exploration copies of Overworld, Nether, End, and modded dimensions
+- **Runtime Dimension Creation**: Dynamically creates "exploration" variants of existing dimensions (e.g., Overworld, Nether, End) at server startup
+- **Daily Reset System**: Exploration Dimensions reset/refresh with new world generation seeds each server restart - Normal dimensions are unaffected
+- **Slash Command Access**: Players can teleport to/from Exploration Dimensions using slash commands
 - **Performance Optimized**: Aggressive chunk unloading and memory management for server stability
-- **Inventory Preservation**: Optional keep inventory feature for exploration dimensions
-- **Corpse Mod Compatibility**: Smart integration with popular corpse/gravestone mods
-- **Xaero Map Cleanup**: Automatic cleanup of minimap data for resetting dimensions
-
-## Technical Highlights
-
-- **Manual Multi-Loader Architecture**: Supports both Fabric and NeoForge without Architectury
-- **Mixin-Based Registry Manipulation**: Advanced registry manipulation without datapacks
-- **Thread-Safe Operations**: Concurrent data structures and locking for multiplayer safety
-- **Client-Server Synchronization**: Custom networking for seamless dimension information sync
-- **Comprehensive Error Handling**: Multiple fallback strategies and emergency cleanup procedures
-- **Per-Dimension-Type Counters**: Consistent naming system (overworld_0, nether_0, etc.)
-- **Service Loader Pattern**: Clean platform abstraction using Java's ServiceLoader
+- **Inventory Preservation**: Optional keepInventory feature for players in Exploration Dimensions
+- **Corpse Mod Compatibility**: Options to cede priority to or override popular corpse mod/gravestone mods with the keepInventory feature
+- **Xaero Map Cleanup**: Automatic cleanup of map data for old Exploration Dimensions
 
 ## Commands
 
 ### Player Commands (`/exploration`)
-- `list` - Show available exploration dimensions
-- `tp <dimension>` - Teleport to exploration dimension
+- `list` - Show available Exploration Dimensions
+- `tp <dimension>` - Teleport to Exploration Dimension
 - `return` - Return to saved position
 - `info` - Display mod information
 
 ### Admin Commands (`/explorationadmin`)
-- `returnall` - Evacuate all players from exploration dimensions
+- `returnall` - Evacuate all players from Exploration Dimensions
 - `info <dimension>` - Detailed dimension statistics
 - `stats` - Overall mod statistics
 - `debug registry` - Registry diagnostics
@@ -59,44 +49,50 @@ A sophisticated Minecraft mod that creates temporary, resettable duplicate dimen
 
 ### Core Settings
 - `enabledDimensions` - List of dimensions to create exploration copies for
-- `explorationBorder` - World border size for exploration dimensions (-1 for same as parent)
+- `explorationBorder` - World border size for Exploration Dimensions (-1 for same as parent)
 - `seedStrategy` - Seed generation strategy: "random", "date-based", or "debug"
-- `allowModdedDimensions` - Allow exploration copies of modded dimensions
 
-### Safety & Features
-- `preventExplorationSpawnSetting` - Disable bed spawning in exploration dimensions
-- `keepInventoryInExploration` - Keep inventory when dying in exploration dimensions
-- `deferToCorpseMods` - Let corpse mods handle death instead of keeping inventory
-- `disableEnderChests` - Block ender chest access in exploration dimensions
-- `disableEndGateways` - Prevent end gateway usage in exploration dimensions
+### Optional Features
+- `preventExplorationSpawnSetting` - Disable spawn setting in Exploration Dimensions (beds/anchors will still explode)
+- `keepInventoryInExploration` - keepInventory when dying in Exploration Dimensions
+- `deferToCorpseMods` - Let corpse mods handle death instead of built-in keepInventory
+- `disableEnderChests` - Block ender chest access in Exploration Dimensions
+- `clearInventoryOnReturn` - Clear inventory when returning from Exploration Dimensions
 - `cleanupXaeroMapData` - Auto-cleanup Xaero minimap data on dimension reset
 
-### Gameplay
+### Restrictions
 - `teleportCooldown` - Cooldown between teleports (in seconds)
 - `restrictToCurrentDimension` - Only allow teleport to exploration version of current dimension
-- `clearInventoryOnReturn` - Clear inventory when returning from exploration
 
 ### Performance
 - `aggressiveChunkUnloading` - Enable aggressive chunk unloading
 - `maxChunksPerPlayer` - Maximum chunks loaded per player
-- `preventDiskSaves` - Skip saving exploration dimensions to disk
+- `preventDiskSaves` - Don't save Exploration Dimension chunks to disk; chunks will reset when **unloaded** - not just at server reset (performance heavy)
 - `preGenerateSpawnChunks` - Pre-generate spawn chunks on dimension creation
+- `oldDimensionRetentionCount` - How many, if any, "old" Exploration Dimensions should be kept
 
-## Compass Mod Compatibility
+## Mod Compatibility
 
-### Nature's Compass
-Nature's Compass works correctly in exploration dimensions because biomes are placed using climate parameters that remain consistent regardless of the dimension's seed.
+### Built-in Compatibility
+- Both the Nature's Compass and Explorer's Compass mods will work in Exploration Dimensions
+- Xaero's Map cleanup of old/unavailable Exploration Dimensions
+- Corpse/Gravestone mod priority options with built-in keepInventory system
 
-### Explorer's Compass  
-Explorer's Compass works correctly in exploration dimensions for most vanilla and modded structures. The mod properly handles the modified dimension seeds and can accurately locate structures in their new positions.
+### Tested/Known Compatibilities
+- Explorations Dimensions should work as-is with any world generation or structure mods/packs that use vanilla's built-in systems for generation or structure placement
+- Xaero's Map / Minimap
+- Terralith
+- Yung's Structures
+- Cobblemon
 
-**Known Edge Cases**: Some mods that use custom structure generation or placement systems (such as Applied Energistics 2 meteorites) may not be found correctly by Explorer's Compass in exploration dimensions.
-
-**Debug Command**: Use `/explorationadmin debug compass` to verify dimension seed information.
+### Known Issues / WIP
+- Mods that utilize custom placement mechanics (e.g., AE2 Meteorites) do not (yet) recognize the updated world seeds for Exploration Dimensions, so these generations will not change from cycle to cycle
+- Broader version/loader support
+- Modded/datapack dimensions should theoretically work, but are as of yet untested
 
 ## License
 
-As of July 2, 2025, Brecher's Dimensions and Brecher's Exploration Dimensions are made available subject to the terms and conditions of the GNU Lesser General Public License 3, the full, unedited text of which may be found in the LICENSE.md file in this repository.
+As of July 2, 2025, Brecher's Dimensions and Brecher's Exploration Dimensions are made available subject to the terms and conditions of the GNU Lesser General Public License 3, the full, unedited text of which may be found in LICENSE.md
 
 ## Contributing
 
