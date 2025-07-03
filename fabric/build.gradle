@@ -1,0 +1,120 @@
+plugins {
+    id 'fabric-loom'
+}
+
+base {
+    archivesName = "${project.archives_base_name}-fabric"
+}
+
+configurations {
+    includeTransitive {
+        transitive = true
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.layered() {
+        officialMojangMappings()
+        parchment("org.parchmentmc.data:parchment-${minecraft_version}:${parchment_version}@zip")
+    }
+    
+    modImplementation "net.fabricmc:fabric-loader:${project.fabric_loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    
+    // Optional dependencies for compatibility - compile only, not included in jar
+    modCompileOnly files("../libs/ExplorersCompass-1.21.1-2.2.5-fabric.jar")
+    
+    // Include common module
+    implementation project(path: ':common', configuration: 'commonJava')
+    includeTransitive project(path: ':common')
+}
+
+loom {
+    mixin {
+        defaultRefmapName = "${mod_id}-fabric.refmap.json"
+    }
+    
+    accessWidenerPath = file("src/main/resources/brecher_dim.accesswidener")
+    
+    runs {
+        client {
+            client()
+            setConfigName("Fabric Client")
+            ideConfigGenerated(true)
+            runDir("run")
+        }
+        
+        server {
+            server()
+            setConfigName("Fabric Server")
+            ideConfigGenerated(true)
+            runDir("run/server")
+        }
+        
+        datagen {
+            inherit server
+            name "Data Generation"
+            vmArg "-Dfabric-api.datagen"
+            vmArg "-Dfabric-api.datagen.output-dir=${file("src/generated/resources")}"
+            vmArg "-Dfabric-api.datagen.modid=${project.mod_id}"
+            runDir "build/datagen"
+        }
+    }
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir project(':common').file('src/main/java')
+        }
+        resources {
+            srcDir project(':common').file('src/main/resources')
+            srcDirs += ['src/generated/resources']
+        }
+    }
+}
+
+processResources {
+    // Handle duplicate files from common module
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    
+    inputs.property "version", project.version
+    inputs.property "minecraft_version", project.minecraft_version
+    inputs.property "fabric_loader_version", project.fabric_loader_version
+    inputs.property "fabric_api_version", project.fabric_api_version
+    
+    filesMatching("fabric.mod.json") {
+        expand([
+            "minecraft_version": project.minecraft_version,
+            "mod_version": project.mod_version,
+            "mod_id": project.mod_id,
+            "mod_name": project.mod_name,
+            "mod_description": project.mod_description,
+            "mod_author": project.mod_author,
+            "mod_license": project.mod_license,
+            "fabric_loader_version": project.fabric_loader_version,
+            "fabric_api_version": project.fabric_api_version
+        ])
+    }
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${project.mod_name}" }
+    }
+}
+
+// Fix duplicate resources in sourcesJar
+tasks.named('sourcesJar') {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+publishing {
+    publications {
+        mavenFabric(MavenPublication) {
+            from components.java
+            artifactId = project.archives_base_name + "-fabric"
+        }
+    }
+}

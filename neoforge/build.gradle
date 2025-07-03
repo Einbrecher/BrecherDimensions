@@ -1,0 +1,156 @@
+plugins {
+    id 'net.neoforged.moddev'
+}
+
+// Set the base name for all archives
+base {
+    archivesName = "${project.archives_base_name}-neoforge"
+}
+
+neoForge {
+    version = project.neoforge_version
+    
+    parchment {
+        minecraftVersion = project.minecraft_version
+        mappingsVersion = project.parchment_version
+    }
+    
+    runs {
+        client {
+            client()
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+        
+        server {
+            server()
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            programArgument '--nogui'
+        }
+        
+        gameTestServer {
+            type = "gameTestServer"
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+        
+        data {
+            data()
+            programArguments.addAll '--mod', project.mod_id,
+                    '--all',
+                    '--output', file('src/generated/resources/').absolutePath,
+                    '--existing', file('src/main/resources/').absolutePath
+        }
+    }
+    
+    mods {
+        "${mod_id}" {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir project(':common').file('src/main/java')
+        }
+        resources {
+            srcDir project(':common').file('src/main/resources')
+            srcDirs += ['src/generated/resources']
+        }
+    }
+}
+
+dependencies {
+    // Optional dependencies for compatibility - compile only, not included in jar
+    compileOnly files("../libs/ExplorersCompass-1.21.1-3.0.3-neoforge.jar")
+    
+    // Include common module classes via configuration
+    implementation project(path: ':common', configuration: 'commonJava')
+}
+
+// NeoForge requires an access transformer instead of access widener
+tasks.register('convertAccessWidener') {
+    doLast {
+        def accessWidenerFile = project(':common').file('src/main/resources/brecher_dim.accesswidener')
+        def accessTransformerFile = file('src/main/resources/META-INF/accesstransformer.cfg')
+        
+        if (accessWidenerFile.exists()) {
+            accessTransformerFile.parentFile.mkdirs()
+            accessTransformerFile.text = '# Generated from access widener\n'
+            
+            accessWidenerFile.eachLine { line ->
+                if (line.startsWith('accessible')) {
+                    def parts = line.split(' ')
+                    if (parts.length >= 3) {
+                        def type = parts[1]
+                        def target = parts[2]
+                        
+                        if (type == 'field') {
+                            // Convert field: net/minecraft/class target -> net.minecraft.class target
+                            def convertedTarget = target.replace('/', '.')
+                            accessTransformerFile.append("public ${convertedTarget}\n")
+                        } else if (type == 'method') {
+                            def convertedTarget = target.replace('/', '.')
+                            accessTransformerFile.append("public ${convertedTarget}\n")
+                        } else if (type == 'class') {
+                            def convertedTarget = target.replace('/', '.')
+                            accessTransformerFile.append("public ${convertedTarget}\n")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+processResources {
+    // Handle duplicate files from common module
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    
+    inputs.property 'version', project.version
+    inputs.property 'minecraft_version', project.minecraft_version
+    inputs.property 'neoforge_version', project.neoforge_version
+    
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand([
+            'minecraft_version': project.minecraft_version,
+            'mod_version': project.mod_version,
+            'mod_id': project.mod_id,
+            'mod_name': project.mod_name,
+            'mod_description': project.mod_description,
+            'mod_author': project.mod_author,
+            'mod_license': project.mod_license,
+            'neoforge_version': project.neoforge_version
+        ])
+    }
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${project.mod_name}" }
+    }
+    
+    manifest {
+        attributes([
+            'Implementation-Title': project.mod_name,
+            'Implementation-Version': project.version,
+            'Implementation-Vendor': project.mod_author
+        ])
+    }
+    
+    archiveClassifier = ''
+}
+
+// Fix duplicate resources in sourcesJar
+tasks.named('sourcesJar') {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+publishing {
+    publications {
+        mavenNeoForge(MavenPublication) {
+            from components.java
+            artifactId = project.archives_base_name + "-neoforge"
+        }
+    }
+}

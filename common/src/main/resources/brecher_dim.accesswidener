@@ -1,0 +1,24 @@
+accessWidener	v2	named
+
+# Access widener for Brecher's Dimensions
+# This file will be converted to Access Transformers for NeoForge
+
+# Make frozen field accessible in MappedRegistry
+accessible field net/minecraft/core/MappedRegistry frozen Z
+
+# Access to registry internal maps
+accessible field net/minecraft/core/MappedRegistry byKey Ljava/util/Map;
+accessible field net/minecraft/core/MappedRegistry byLocation Ljava/util/Map;
+accessible field net/minecraft/core/MappedRegistry byValue Ljava/util/Map;
+
+# Access to MinecraftServer fields
+accessible field net/minecraft/server/MinecraftServer levels Ljava/util/Map;
+accessible field net/minecraft/server/MinecraftServer executor Ljava/util/concurrent/Executor;
+accessible field net/minecraft/server/MinecraftServer progressListenerFactory Lnet/minecraft/server/level/progress/ChunkProgressListenerFactory;
+accessible field net/minecraft/server/MinecraftServer storageSource Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;
+
+# Access to ServerLevel fields for dimension creation
+accessible field net/minecraft/server/level/ServerLevel serverLevelData Lnet/minecraft/world/level/storage/ServerLevelData;
+
+# Access to ChunkGeneratorStructureState constructor for mixin redirect
+accessible method net/minecraft/world/level/chunk/ChunkGeneratorStructureState <init> (Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/biome/BiomeSource;JJLjava/util/List;)V

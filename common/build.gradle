@@ -1,0 +1,35 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev'
+}
+
+neoForge {
+    neoFormVersion = project.neoform_version
+}
+
+configurations {
+    commonJava { canBeConsumed = true }
+    commonResources { canBeConsumed = true }
+}
+
+artifacts {
+    commonJava(jar)
+    commonResources(sourceSets.main.resources.sourceDirectories.singleFile)
+}
+
+dependencies {
+    // We only depend on vanilla Minecraft here
+    // Platform-specific dependencies go in their respective modules
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(Integer.parseInt(project.java_version))
+    }
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = Integer.parseInt(project.java_version)
+}

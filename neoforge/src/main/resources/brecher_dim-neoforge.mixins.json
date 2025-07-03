@@ -1,0 +1,24 @@
+{
+    "required": true,
+    "minVersion": "0.8",
+    "package": "net.tinkstav.brecher_dim.neoforge.mixin",
+    "compatibilityLevel": "JAVA_21",
+    "mixins": [
+        "IServerLevelAccessor",
+        "MixinChunkMap",
+        "MixinLevelStem",
+        "MixinMinecraftServer",
+        "MixinPlayerList",
+        "MixinRandomState",
+        "MixinRegistryFixed",
+        "MixinServerChunkCache",
+        "MixinServerLevel",
+        "MixinEndGatewayBlock"
+    ],
+    "client": [
+        "client.MixinClientPacketListener"
+    ],
+    "injectors": {
+        "defaultRequire": 1
+    }
+}
