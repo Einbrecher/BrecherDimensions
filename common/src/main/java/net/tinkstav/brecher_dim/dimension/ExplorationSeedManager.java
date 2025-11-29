@@ -22,7 +22,7 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
-import net.tinkstav.brecher_dim.BrecherDimensions;
+import net.tinkstav.brecher_dim.util.DimensionUtils;
 import org.slf4j.Logger;
 
 import java.util.Map;
@@ -48,12 +48,11 @@ public class ExplorationSeedManager {
     
     /**
      * Check if a dimension is an exploration dimension
+     * @deprecated Use {@link DimensionUtils#isExplorationDimension(ResourceKey)} instead
      */
+    @Deprecated
     public static boolean isExplorationDimension(ResourceKey<Level> dimension) {
-        if (dimension == null) return false;
-        ResourceLocation location = dimension.location();
-        return location.getNamespace().equals(BrecherDimensions.MOD_ID) && 
-               location.getPath().startsWith("exploration_");
+        return DimensionUtils.isExplorationDimension(dimension);
     }
     
     /**

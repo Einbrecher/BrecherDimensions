@@ -35,6 +35,6 @@ public class ConfigHandlerImpl implements ConfigHandler {
     
     @Override
     public String getConfigPath() {
-        return FabricLoader.getInstance().getConfigDir().resolve("brecher_exploration.properties").toString();
+        return FabricLoader.getInstance().getConfigDir().resolve("brecher_exploration").resolve("brecher_dimensions.yml").toString();
     }
 }

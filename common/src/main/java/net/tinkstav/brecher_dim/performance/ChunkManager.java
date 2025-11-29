@@ -24,6 +24,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.resources.ResourceLocation;
 import net.tinkstav.brecher_dim.BrecherDimensions;
+import net.tinkstav.brecher_dim.config.BrecherConfig;
 import net.tinkstav.brecher_dim.dimension.BrecherDimensionManager;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
@@ -44,7 +45,18 @@ public class ChunkManager {
     // Track chunk load counts for monitoring
     private static final Map<ResourceLocation, Integer> chunkLoadCounts = new ConcurrentHashMap<>();
     private static final Map<ResourceLocation, Integer> chunkUnloadCounts = new ConcurrentHashMap<>();
-    
+
+    /**
+     * Clear all cached data - must be called on server shutdown to prevent memory leaks
+     * in singleplayer/integrated server scenarios where static maps persist across restarts
+     */
+    public static void shutdown() {
+        LOGGER.info("ChunkManager shutting down - clearing {} dimensions tracked", loadedChunks.size());
+        loadedChunks.clear();
+        chunkLoadCounts.clear();
+        chunkUnloadCounts.clear();
+    }
+
     /**
      * Configure a dimension for exploration mode with aggressive chunk unloading
      */
@@ -56,10 +68,22 @@ public class ChunkManager {
     
     /**
      * Force unload all chunks in a dimension
+     * Only performs forced unloading if aggressive mode is enabled or memory pressure is high
      */
     public static void forceUnloadAllChunks(ServerLevel level) {
-        LOGGER.info("Force unloading chunks in {}", level.dimension().location());
-        // Platform-specific implementation will handle actual unloading
+        // Check if we should actually force unload
+        boolean aggressiveMode = BrecherConfig.isAggressiveChunkUnloading();
+        boolean isHighPressure = MemoryMonitor.isMemoryPressureHigh();
+
+        if (aggressiveMode || isHighPressure) {
+            LOGGER.info("Force unloading chunks in {} (aggressive: {}, high memory: {})",
+                level.dimension().location(), aggressiveMode, isHighPressure);
+            // Actual unloading through vanilla chunk system
+            var chunkSource = level.getChunkSource();
+            chunkSource.tick(() -> true, true);  // Force process all chunks
+        } else {
+            LOGGER.debug("Skipping force unload in {} - aggressive mode disabled", level.dimension().location());
+        }
     }
     
     /**
@@ -68,36 +92,51 @@ public class ChunkManager {
     public static void performCleanup(MinecraftServer server) {
         BrecherDimensionManager manager = BrecherDimensions.getDimensionManager();
         if (manager == null) return;
-        
+
+        // Check if aggressive chunk unloading is enabled
+        boolean aggressiveMode = BrecherConfig.isAggressiveChunkUnloading();
         boolean isHighPressure = MemoryMonitor.isMemoryPressureHigh();
-        
-        if (isHighPressure) {
-            LOGGER.warn("High memory pressure detected, performing aggressive chunk cleanup");
-            MemoryMonitor.logMemoryUsage("Before aggressive cleanup");
+
+        // Only perform aggressive cleanup if the config is enabled OR we're under high memory pressure
+        if (!aggressiveMode && !isHighPressure) {
+            LOGGER.trace("Skipping chunk cleanup - aggressive mode disabled and memory pressure normal");
+            return;
         }
-        
+
+        if (isHighPressure) {
+            LOGGER.warn("High memory pressure detected, performing {} chunk cleanup",
+                aggressiveMode ? "aggressive" : "emergency");
+            MemoryMonitor.logMemoryUsage("Before cleanup");
+        }
+
         // Cleanup chunks in exploration dimensions
         for (ServerLevel level : server.getAllLevels()) {
             if (manager.isExplorationDimension(level.dimension().location())) {
                 // Only perform cleanup if there are no players in the dimension
                 if (level.players().isEmpty()) {
-                    // Force unload all chunks when dimension is empty
-                    var chunkSource = level.getChunkSource();
-                    chunkSource.tick(() -> true, true);
-                    LOGGER.debug("Unloaded all chunks in empty dimension: {}", level.dimension().location());
+                    if (aggressiveMode) {
+                        // Force unload all chunks when dimension is empty (aggressive mode)
+                        var chunkSource = level.getChunkSource();
+                        chunkSource.tick(() -> true, true);
+                        LOGGER.debug("Aggressively unloaded all chunks in empty dimension: {}", level.dimension().location());
+                    } else if (isHighPressure) {
+                        // Emergency cleanup under memory pressure even without aggressive mode
+                        var chunkSource = level.getChunkSource();
+                        chunkSource.tick(() -> false, false);  // Normal tick, don't force process all chunks
+                        LOGGER.debug("Emergency chunk cleanup in empty dimension {} due to memory pressure", level.dimension().location());
+                    }
                 } else if (isHighPressure) {
-                    // Under memory pressure, do a limited cleanup
-                    // Don't process all chunks at once - let vanilla handle it normally
+                    // Under memory pressure with players present, do a limited cleanup
                     var chunkSource = level.getChunkSource();
                     chunkSource.tick(() -> false, false);  // Normal tick, don't force process all chunks
-                    LOGGER.debug("Performed normal chunk cleanup in {} due to memory pressure", level.dimension().location());
+                    LOGGER.debug("Limited chunk cleanup in {} due to memory pressure (players present)", level.dimension().location());
                 }
                 // Otherwise, skip cleanup - let vanilla handle it during normal operations
             }
         }
-        
+
         if (isHighPressure) {
-            MemoryMonitor.logMemoryUsage("After aggressive cleanup");
+            MemoryMonitor.logMemoryUsage("After cleanup");
         }
     }
     

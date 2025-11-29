@@ -25,6 +25,7 @@ import net.tinkstav.brecher_dim.dimension.BrecherDimensionManager;
 import net.tinkstav.brecher_dim.dimension.DimensionRegistrar;
 import net.tinkstav.brecher_dim.dimension.ExplorationSeedManager;
 import net.tinkstav.brecher_dim.network.BrecherNetworking;
+import net.tinkstav.brecher_dim.performance.ChunkManager;
 import net.tinkstav.brecher_dim.teleport.TeleportHandler;
 import net.tinkstav.brecher_dim.platform.Services;
 import net.tinkstav.brecher_dim.util.DimensionCleanupUtil;
@@ -140,13 +141,16 @@ public class BrecherDimensions {
             // Save dimension counters to disk
             DimensionCounterUtil.saveIfDirty();
             
-            // Clear exploration seed manager so new seeds are generated on next start
+            // Clear exploration seed manager for next dimension creation
             ExplorationSeedManager.clearAll();
             
             // Shutdown teleport handler executor
             TeleportHandler.shutdown();
-            
-            LOGGER.info("Brecher's Dimensions cleanup complete - exploration dimensions will be regenerated on next start");
+
+            // Shutdown chunk manager static caches
+            ChunkManager.shutdown();
+
+            LOGGER.info("Brecher's Dimensions cleanup complete - new exploration dimensions will be created on next start");
             
         } catch (Exception e) {
             LOGGER.error("Error during Brecher's Dimensions shutdown cleanup", e);

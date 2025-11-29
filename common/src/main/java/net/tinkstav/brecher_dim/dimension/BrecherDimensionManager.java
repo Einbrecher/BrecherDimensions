@@ -31,6 +31,7 @@ import net.tinkstav.brecher_dim.network.BrecherNetworking;
 import net.tinkstav.brecher_dim.teleport.TeleportHandler;
 import net.tinkstav.brecher_dim.performance.ChunkManager;
 import net.tinkstav.brecher_dim.performance.MemoryMonitor;
+import net.tinkstav.brecher_dim.util.DimensionUtils;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
 
@@ -63,7 +64,7 @@ public class BrecherDimensionManager {
     /**
      * Get the exploration dimension for a base dimension
      */
-    public synchronized Optional<ServerLevel> getExplorationDimension(ResourceLocation baseDimension) {
+    public Optional<ServerLevel> getExplorationDimension(ResourceLocation baseDimension) {
         ResourceKey<Level> baseKey = ResourceKey.create(Registries.DIMENSION, baseDimension);
         ResourceKey<Level> explorationKey = dimensionMappings.get(baseKey);
         
@@ -258,12 +259,14 @@ public class BrecherDimensionManager {
     /**
      * Perform entity cleanup in exploration dimensions
      * Called periodically to manage memory
+     * Note: This respects the aggressiveChunkUnloading config through ChunkManager
      */
     public void performEntityCleanup() {
         for (ResourceKey<Level> explorationKey : dimensionMappings.values()) {
             ServerLevel level = server.getLevel(explorationKey);
             if (level != null && level.players().isEmpty()) {
                 // Force chunk unloading in empty dimensions
+                // This will respect the aggressiveChunkUnloading config
                 ChunkManager.forceUnloadAllChunks(level);
             }
         }
@@ -332,10 +335,10 @@ public class BrecherDimensionManager {
     /**
      * Check if a dimension is an exploration dimension (static version)
      * Used for compass compatibility mixins
+     * @deprecated Use {@link DimensionUtils#isExplorationDimension(ResourceKey)} instead
      */
+    @Deprecated
     public static boolean isExplorationDimension(ResourceKey<Level> dimension) {
-        return dimension != null && 
-               BrecherDimensions.MOD_ID.equals(dimension.location().getNamespace()) &&
-               dimension.location().getPath().startsWith("exploration_");
+        return DimensionUtils.isExplorationDimension(dimension);
     }
 }

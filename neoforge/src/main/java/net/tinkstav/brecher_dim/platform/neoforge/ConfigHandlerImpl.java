@@ -35,6 +35,6 @@ public class ConfigHandlerImpl implements ConfigHandler {
     
     @Override
     public String getConfigPath() {
-        return FMLPaths.CONFIGDIR.get().resolve("brecher_exploration.toml").toString();
+        return FMLPaths.CONFIGDIR.get().resolve("brecher_exploration").resolve("brecher_dimensions.yml").toString();
     }
 }
