@@ -95,11 +95,7 @@ public class PlayerSnapshot {
     public float getPitch() {
         return pitch;
     }
-    
-    public long getTimestamp() {
-        return timestamp;
-    }
-    
+
     public long timestamp() {
         return timestamp;
     }

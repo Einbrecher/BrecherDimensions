@@ -19,7 +19,11 @@
 package net.tinkstav.brecher_dim.util;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtIo;
+import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.level.storage.LevelResource;
 import net.tinkstav.brecher_dim.BrecherDimensions;
 import net.tinkstav.brecher_dim.config.BrecherConfig;
 import org.slf4j.Logger;
@@ -29,8 +33,9 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.*;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 /**
  * Utility class for cleaning up old exploration dimension folders
@@ -102,21 +107,31 @@ public class DimensionCleanupUtil {
             }
             
             LOGGER.info("Deleting {} old exploration dimension folders total", foldersToDelete.size());
-            
+
+            // Collect names of successfully deleted dimensions for level.dat cleanup
+            Set<String> deletedDimensionNames = new HashSet<>();
+
             for (DimensionFolder folder : foldersToDelete) {
                 try {
+                    String dimensionName = folder.path.getFileName().toString();
                     deleteDirectoryRecursively(folder.path);
-                    LOGGER.info("Deleted old exploration dimension: {}", folder.path.getFileName());
+                    deletedDimensionNames.add(dimensionName);
+                    LOGGER.info("Deleted old exploration dimension: {}", dimensionName);
                 } catch (IOException e) {
                     LOGGER.error("Failed to delete dimension folder: {}", folder.path, e);
                 }
             }
-            
+
+            // Clean up level.dat references to deleted dimensions
+            if (!deletedDimensionNames.isEmpty()) {
+                cleanupLevelDatReferences(server, deletedDimensionNames);
+            }
+
             // Also clean up any empty brecher_dim folder if no dimensions remain
             cleanupEmptyModFolder(dimensionsPath);
-            
+
             LOGGER.info("Dimension cleanup complete");
-            
+
         } catch (Exception e) {
             LOGGER.error("Error during dimension cleanup", e);
         }
@@ -194,6 +209,86 @@ public class DimensionCleanupUtil {
         });
     }
     
+    /**
+     * Clean up dimension references from level.dat to prevent "unknown dimension" warnings.
+     * This removes entries from Data/WorldGenSettings/dimensions that match deleted exploration dimensions.
+     *
+     * @param server The Minecraft server instance
+     * @param deletedDimensionNames Set of dimension folder names that were deleted (e.g., "exploration_overworld_1")
+     */
+    private static void cleanupLevelDatReferences(MinecraftServer server, Set<String> deletedDimensionNames) {
+        Path levelDatPath = server.getWorldPath(LevelResource.LEVEL_DATA_FILE);
+
+        if (!Files.exists(levelDatPath)) {
+            LOGGER.debug("level.dat not found, skipping reference cleanup");
+            return;
+        }
+
+        try {
+            // Create backup before modifying
+            Path backupPath = levelDatPath.resolveSibling("level.dat.brecher_backup");
+            Files.copy(levelDatPath, backupPath, REPLACE_EXISTING);
+            LOGGER.debug("Created level.dat backup at {}", backupPath);
+
+            // Read the level.dat NBT
+            CompoundTag rootTag = NbtIo.readCompressed(levelDatPath, NbtAccounter.unlimitedHeap());
+            if (rootTag == null) {
+                LOGGER.warn("Failed to read level.dat - file may be corrupted");
+                return;
+            }
+
+            // Navigate to Data/WorldGenSettings/dimensions
+            CompoundTag dataTag = rootTag.getCompound("Data");
+            if (dataTag.isEmpty()) {
+                LOGGER.debug("No Data tag in level.dat");
+                return;
+            }
+
+            CompoundTag worldGenSettings = dataTag.getCompound("WorldGenSettings");
+            if (worldGenSettings.isEmpty()) {
+                LOGGER.debug("No WorldGenSettings in level.dat");
+                return;
+            }
+
+            CompoundTag dimensions = worldGenSettings.getCompound("dimensions");
+            if (dimensions.isEmpty()) {
+                LOGGER.debug("No dimensions tag in WorldGenSettings");
+                return;
+            }
+
+            // Build set of full dimension keys to remove (e.g., "brecher_dim:exploration_overworld_1")
+            Set<String> keysToRemove = new HashSet<>();
+            for (String key : dimensions.getAllKeys()) {
+                // Check if this key matches any of our deleted dimensions
+                // Keys are in format "namespace:path" - we check if the path matches
+                if (key.startsWith(BrecherDimensions.MOD_ID + ":")) {
+                    String path = key.substring(BrecherDimensions.MOD_ID.length() + 1);
+                    if (deletedDimensionNames.contains(path)) {
+                        keysToRemove.add(key);
+                    }
+                }
+            }
+
+            if (keysToRemove.isEmpty()) {
+                LOGGER.debug("No dimension references to clean up in level.dat");
+                return;
+            }
+
+            // Remove the dimension entries
+            for (String key : keysToRemove) {
+                dimensions.remove(key);
+                LOGGER.debug("Removed dimension reference from level.dat: {}", key);
+            }
+
+            // Write the modified NBT back
+            NbtIo.writeCompressed(rootTag, levelDatPath);
+            LOGGER.info("Cleaned up {} dimension references from level.dat", keysToRemove.size());
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to clean up level.dat references. A backup was created at level.dat.brecher_backup", e);
+        }
+    }
+
     /**
      * Clean up empty mod folder if no dimensions remain
      */

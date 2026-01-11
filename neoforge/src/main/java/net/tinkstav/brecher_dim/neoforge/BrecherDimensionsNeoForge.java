@@ -43,10 +43,8 @@ public class BrecherDimensionsNeoForge {
     public BrecherDimensionsNeoForge(IEventBus modEventBus, net.neoforged.fml.ModContainer modContainer) {
         LOGGER.info("Initializing Brecher's Dimensions for NeoForge");
         
-        // Register config first
-        net.tinkstav.brecher_dim.config.neoforge.BrecherConfigImpl.registerConfig(modContainer);
-        // Register config event handlers on mod event bus
-        modEventBus.register(net.tinkstav.brecher_dim.config.neoforge.BrecherConfigImpl.class);
+        // Register config first (YAML config doesn't need event bus registration)
+        net.tinkstav.brecher_dim.config.neoforge.BrecherConfigImpl.register(modContainer);
         
         // Initialize common mod
         BrecherDimensions.init();

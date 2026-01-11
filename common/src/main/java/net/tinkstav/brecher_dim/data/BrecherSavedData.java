@@ -29,6 +29,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 import net.minecraft.core.BlockPos;
+import net.tinkstav.brecher_dim.generation.GenerationProgress;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
 
@@ -47,6 +48,7 @@ public class BrecherSavedData extends SavedData {
     private final Map<ResourceLocation, DimensionMetadata> dimensionMetadata = new ConcurrentHashMap<>();
     private final Map<UUID, PlayerExplorationStats> playerStats = new ConcurrentHashMap<>();
     private final Map<UUID, ResourceLocation> playerLastKnownDimensions = new ConcurrentHashMap<>();
+    private final Map<ResourceLocation, GenerationProgress> pregenTasks = new ConcurrentHashMap<>();
     private long nextResetTime = 0;
     
     public static BrecherSavedData get(MinecraftServer server) {
@@ -178,6 +180,44 @@ public class BrecherSavedData extends SavedData {
             // Load next reset time
             data.nextResetTime = tag.getLong("nextResetTime");
             
+            // Load pregen tasks
+            CompoundTag pregenTag = tag.getCompound("pregenTasks");
+            for (String key : pregenTag.getAllKeys()) {
+                try {
+                    ResourceLocation dimLoc = ResourceLocation.parse(key);
+                    GenerationProgress progress = GenerationProgress.fromNbt(pregenTag.getCompound(key));
+                    if (progress != null) {
+                        data.pregenTasks.put(dimLoc, progress);
+                    }
+                } catch (Exception e) {
+                    LOGGER.warn("Failed to load pregen task for {}: {}", key, e.getMessage());
+                }
+            }
+
+            // Load manual unlocks (progression gating)
+            CompoundTag manualUnlocksTag = tag.getCompound("manualUnlocks");
+            for (String playerKey : manualUnlocksTag.getAllKeys()) {
+                try {
+                    UUID playerId = UUID.fromString(playerKey);
+                    Set<ResourceLocation> unlocks = ConcurrentHashMap.newKeySet();
+
+                    ListTag dimensionList = manualUnlocksTag.getList(playerKey, Tag.TAG_STRING);
+                    for (int i = 0; i < dimensionList.size(); i++) {
+                        try {
+                            unlocks.add(ResourceLocation.parse(dimensionList.getString(i)));
+                        } catch (Exception e) {
+                            LOGGER.warn("Failed to load manual unlock dimension: {}", e.getMessage());
+                        }
+                    }
+
+                    if (!unlocks.isEmpty()) {
+                        data.manualUnlocks.put(playerId, unlocks);
+                    }
+                } catch (Exception e) {
+                    LOGGER.warn("Failed to load manual unlocks for player {}: {}", playerKey, e.getMessage());
+                }
+            }
+
         } catch (Exception e) {
             LOGGER.error("Critical error loading BrecherSavedData, returning partial data", e);
         }
@@ -253,6 +293,24 @@ public class BrecherSavedData extends SavedData {
         // Save next reset time
         tag.putLong("nextResetTime", nextResetTime);
         
+        // Save pregen tasks
+        CompoundTag pregenTag = new CompoundTag();
+        pregenTasks.forEach((dim, progress) ->
+            pregenTag.put(dim.toString(), progress.toNbt())
+        );
+        tag.put("pregenTasks", pregenTag);
+
+        // Save manual unlocks (progression gating)
+        CompoundTag manualUnlocksTag = new CompoundTag();
+        manualUnlocks.forEach((playerId, dimensions) -> {
+            ListTag dimensionList = new ListTag();
+            for (ResourceLocation dim : dimensions) {
+                dimensionList.add(StringTag.valueOf(dim.toString()));
+            }
+            manualUnlocksTag.put(playerId.toString(), dimensionList);
+        });
+        tag.put("manualUnlocks", manualUnlocksTag);
+
         return tag;
     }
     
@@ -406,5 +464,83 @@ public class BrecherSavedData extends SavedData {
             stats.recordChunkUnload(chunkPos);
             setDirty();
         }
+    }
+    
+    // Manual unlock management (Progression Gating)
+    // Full implementation in Phase 4 - these are stubs for Phase 2 compatibility
+    private final Map<UUID, Set<ResourceLocation>> manualUnlocks = new ConcurrentHashMap<>();
+
+    /**
+     * Check if a player has a manual unlock for a dimension.
+     * Manual unlocks bypass advancement requirements.
+     * @param player The player's UUID
+     * @param dimension The base dimension ResourceLocation
+     * @return true if the player has a manual unlock
+     */
+    public boolean hasManualUnlock(UUID player, ResourceLocation dimension) {
+        Set<ResourceLocation> unlocks = manualUnlocks.get(player);
+        return unlocks != null && unlocks.contains(dimension);
+    }
+
+    /**
+     * Grant a manual unlock for a dimension to a player.
+     * @param player The player's UUID
+     * @param dimension The base dimension ResourceLocation
+     */
+    public void grantManualUnlock(UUID player, ResourceLocation dimension) {
+        manualUnlocks.computeIfAbsent(player, k -> ConcurrentHashMap.newKeySet()).add(dimension);
+        setDirty();
+        LOGGER.info("Granted manual unlock for dimension {} to player {}", dimension, player);
+    }
+
+    /**
+     * Revoke a manual unlock for a dimension from a player.
+     * @param player The player's UUID
+     * @param dimension The base dimension ResourceLocation
+     * @return true if the unlock was removed, false if it didn't exist
+     */
+    public boolean revokeManualUnlock(UUID player, ResourceLocation dimension) {
+        Set<ResourceLocation> unlocks = manualUnlocks.get(player);
+        if (unlocks != null && unlocks.remove(dimension)) {
+            setDirty();
+            LOGGER.info("Revoked manual unlock for dimension {} from player {}", dimension, player);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Get all manual unlocks for a player.
+     * @param player The player's UUID
+     * @return Set of dimension ResourceLocations the player has manually unlocked
+     */
+    public Set<ResourceLocation> getManualUnlocks(UUID player) {
+        Set<ResourceLocation> unlocks = manualUnlocks.get(player);
+        return unlocks != null ? new HashSet<>(unlocks) : Collections.emptySet();
+    }
+
+    // Pregen task management
+    public Map<ResourceLocation, GenerationProgress> getPregenTasks() {
+        return new HashMap<>(pregenTasks);
+    }
+    
+    public void setPregenTasks(Map<ResourceLocation, GenerationProgress> tasks) {
+        pregenTasks.clear();
+        pregenTasks.putAll(tasks);
+        setDirty();
+    }
+    
+    public void addPregenTask(ResourceLocation dimension, GenerationProgress progress) {
+        pregenTasks.put(dimension, progress);
+        setDirty();
+    }
+    
+    public void removePregenTask(ResourceLocation dimension) {
+        pregenTasks.remove(dimension);
+        setDirty();
+    }
+    
+    public Optional<GenerationProgress> getPregenTask(ResourceLocation dimension) {
+        return Optional.ofNullable(pregenTasks.get(dimension));
     }
 }

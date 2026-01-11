@@ -31,6 +31,7 @@ public class BrecherConfigSpec {
     public static final ModConfigSpec.IntValue EXPLORATION_BORDER;
     public static final ModConfigSpec.EnumValue<SeedStrategy> SEED_STRATEGY;
     public static final ModConfigSpec.LongValue DEBUG_SEED;
+    public static final ModConfigSpec.ConfigValue<String> WEEKLY_RESET_DAY;
     public static final ModConfigSpec.ConfigValue<List<? extends String>> ENABLED_DIMENSIONS;
     public static final ModConfigSpec.ConfigValue<List<? extends String>> BLACKLIST;
     public static final ModConfigSpec.BooleanValue ALLOW_MODDED_DIMENSIONS;
@@ -54,6 +55,21 @@ public class BrecherConfigSpec {
     public static final ModConfigSpec.BooleanValue PRE_GENERATE_SPAWN_CHUNKS;
     public static final ModConfigSpec.IntValue IMMEDIATE_SPAWN_RADIUS;
     public static final ModConfigSpec.IntValue EXTENDED_SPAWN_RADIUS;
+    
+    // Background pre-generation
+    public static final ModConfigSpec.BooleanValue PREGEN_ENABLED;
+    public static final ModConfigSpec.IntValue PREGEN_CHUNKS_PER_TICK;
+    public static final ModConfigSpec.IntValue PREGEN_TICK_INTERVAL;
+    public static final ModConfigSpec.IntValue PREGEN_TICKS_PER_CHUNK;
+    public static final ModConfigSpec.IntValue PREGEN_TICKET_DURATION;
+    public static final ModConfigSpec.BooleanValue PREGEN_AUTO_START;
+    public static final ModConfigSpec.BooleanValue PREGEN_AUTO_RESUME;
+    public static final ModConfigSpec.IntValue PREGEN_MIN_TPS;
+    public static final ModConfigSpec.IntValue PREGEN_MEMORY_THRESHOLD;
+    public static final ModConfigSpec.IntValue PREGEN_DEFAULT_RADIUS;
+    public static final ModConfigSpec.BooleanValue PREGEN_PAUSE_WITH_PLAYERS;
+    public static final ModConfigSpec.IntValue PREGEN_STALE_HOURS;
+    
     public static final ModConfigSpec.IntValue TELEPORT_SAFETY_RADIUS;
     public static final ModConfigSpec.BooleanValue CREATE_EMERGENCY_PLATFORMS;
     public static final ModConfigSpec.BooleanValue PREFER_SURFACE_SPAWNS;
@@ -82,11 +98,15 @@ public class BrecherConfigSpec {
         
         SEED_STRATEGY = builder
             .comment("Seed generation strategy")
-            .defineEnum("seedStrategy", SeedStrategy.RANDOM);
+            .defineEnum("seedStrategy", SeedStrategy.WEEKLY);
         
         DEBUG_SEED = builder
             .comment("Fixed seed for DEBUG mode")
             .defineInRange("debugSeed", -1L, Long.MIN_VALUE, Long.MAX_VALUE);
+        
+        WEEKLY_RESET_DAY = builder
+            .comment("Day of week for weekly seed reset (MONDAY-SUNDAY, only used with WEEKLY strategy)")
+            .define("weeklyResetDay", "THURSDAY");
         
         builder.pop();
         
@@ -204,6 +224,58 @@ public class BrecherConfigSpec {
         
         builder.pop();
         
+        builder.push("backgroundPreGeneration");
+        
+        PREGEN_ENABLED = builder
+            .comment("Enable background chunk pre-generation")
+            .define("pregenEnabled", true);
+        
+        PREGEN_CHUNKS_PER_TICK = builder
+            .comment("Chunks to generate per processing tick (0 = use ticksPerChunk for fractional rates)")
+            .defineInRange("pregenChunksPerTick", 0, 0, 10);
+        
+        PREGEN_TICK_INTERVAL = builder
+            .comment("Ticks between generation batches")
+            .defineInRange("pregenTickInterval", 1, 1, 200);
+        
+        PREGEN_TICKS_PER_CHUNK = builder
+            .comment("Ticks per chunk when chunksPerTick=0 (2 = 1 chunk/2 ticks, 3 = 1 chunk/3 ticks)")
+            .defineInRange("pregenTicksPerChunk", 2, 1, 100);
+        
+        PREGEN_TICKET_DURATION = builder
+            .comment("Ticks to keep generated chunks loaded")
+            .defineInRange("pregenTicketDuration", 60, 20, 300);
+        
+        PREGEN_AUTO_START = builder
+            .comment("Auto-start generation when dimensions are created")
+            .define("pregenAutoStart", true);
+        
+        PREGEN_AUTO_RESUME = builder
+            .comment("Resume generation tasks after server restart")
+            .define("pregenAutoResume", true);
+        
+        PREGEN_MIN_TPS = builder
+            .comment("Minimum TPS before pausing generation")
+            .defineInRange("pregenMinTPS", 18, 10, 20);
+        
+        PREGEN_MEMORY_THRESHOLD = builder
+            .comment("Memory usage % threshold for pausing")
+            .defineInRange("pregenMemoryThreshold", 85, 50, 95);
+        
+        PREGEN_DEFAULT_RADIUS = builder
+            .comment("Default generation radius in chunks")
+            .defineInRange("pregenDefaultRadius", 100, 10, 1000);
+        
+        PREGEN_PAUSE_WITH_PLAYERS = builder
+            .comment("Pause generation when players are in dimension")
+            .define("pregenPauseWithPlayers", false);
+        
+        PREGEN_STALE_HOURS = builder
+            .comment("Hours before considering a task stale")
+            .defineInRange("pregenStaleHours", 168, 24, 720);
+        
+        builder.pop();
+        
         builder.push("safety");
         
         TELEPORT_SAFETY_RADIUS = builder
@@ -224,7 +296,7 @@ public class BrecherConfigSpec {
         
         WELCOME_MESSAGE = builder
             .comment("Welcome message")
-            .define("welcomeMessage", "Welcome to the Exploration Dimension! This is a temporary dimension that resets with each server restart. If you're still here when the server restarts, you'll be returned to your departure point or the world spawn.");
+            .define("welcomeMessage", "Welcome to the Exploration Dimension! This dimension will be replaced with a new world on the next server restart. If you're still here when the server restarts, you'll be returned to your departure point or the world spawn.");
         
         RETURN_MESSAGE = builder
             .comment("Return message")
@@ -251,6 +323,7 @@ public class BrecherConfigSpec {
     public enum SeedStrategy {
         RANDOM,
         DATE_BASED,
+        WEEKLY,
         DEBUG
     }
 }

@@ -19,6 +19,7 @@
 package net.tinkstav.brecher_dim.config;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Arrays;
 
 /**
@@ -32,8 +33,9 @@ public class BrecherConfigSpec {
         public static final int EXPLORATION_BORDER = -1;
         
         // Seeds
-        public static final String SEED_STRATEGY = "random";
+        public static final String SEED_STRATEGY = "weekly";
         public static final long DEBUG_SEED = -1L;
+        public static final String WEEKLY_RESET_DAY = "THURSDAY";
         
         // Dimensions
         public static final List<String> ENABLED_DIMENSIONS = Arrays.asList(
@@ -59,6 +61,13 @@ public class BrecherConfigSpec {
         // Gameplay
         public static final int TELEPORT_COOLDOWN = 5;
         public static final boolean RESTRICT_TO_CURRENT_DIMENSION = false;
+
+        // Dimension Locks (Progression Gating)
+        public static final boolean DIMENSION_LOCKS_ENABLED = true;
+        public static final Map<String, String> DIMENSION_LOCKS = Map.of(
+            "minecraft:the_nether", "minecraft:story/enter_the_nether",
+            "minecraft:the_end", "minecraft:story/enter_the_end"
+        );
         
         // Performance
         public static final int CHUNK_UNLOAD_DELAY = 60;
@@ -69,11 +78,27 @@ public class BrecherConfigSpec {
         public static final boolean PREVENT_DISK_SAVES = false;
         public static final int OLD_DIMENSION_RETENTION_COUNT = 2;
         
-        // Chunk Pre-generation
+        // Chunk Pre-generation (Spawn)
         public static final boolean PRE_GENERATE_SPAWN_CHUNKS = true;
         public static final int IMMEDIATE_SPAWN_RADIUS = 3;
         public static final int EXTENDED_SPAWN_RADIUS = 8;
         
+        // Chunk Pre-generation (Background)
+        public static final boolean PREGEN_ENABLED = true;  // Enable by default for convenience
+        public static final int PREGEN_CHUNKS_PER_TICK = 0;  // 0 = use ticksPerChunk for fractional rates
+        public static final int PREGEN_TICK_INTERVAL = 1;   // Process every tick for smooth generation
+        public static final int PREGEN_TICKS_PER_CHUNK = 2;  // Generate 1 chunk every 2 ticks (10 chunks/second)
+        public static final int PREGEN_TICKET_DURATION = 60;
+        public static final boolean PREGEN_AUTO_START = true;  // Auto-start by default
+        public static final boolean PREGEN_AUTO_RESUME = true;
+        public static final int PREGEN_MIN_TPS = 18;
+        public static final int PREGEN_MEMORY_THRESHOLD = 85;
+        public static final int PREGEN_DEFAULT_RADIUS = 100;
+        public static final boolean PREGEN_PAUSE_WITH_PLAYERS = false;
+        public static final int PREGEN_STALE_HOURS = 168;
+        public static final int PREGEN_MAX_TICK_MS = 5;  // Max milliseconds per tick for generation loop
+        public static final int PREGEN_LOG_INTERVAL = 1000;  // Log progress every N chunks (1000 = less spam)
+
         // Safety
         public static final int TELEPORT_SAFETY_RADIUS = 16;
         public static final boolean CREATE_EMERGENCY_PLATFORMS = true;
@@ -81,7 +106,7 @@ public class BrecherConfigSpec {
         public static final boolean EXTENDED_SEARCH_RADIUS = true;
         
         // Messages
-        public static final String WELCOME_MESSAGE = "Welcome to the Exploration Dimension! This is a temporary dimension that resets with each server restart. If you're still here when the server restarts, you'll be returned to your departure point or the world spawn.";
+        public static final String WELCOME_MESSAGE = "Welcome to the Exploration Dimension! This dimension will be replaced with a new world on the next server restart. If you're still here when the server restarts, you'll be returned to your departure point or the world spawn.";
         public static final String RETURN_MESSAGE = "Returned to the main world.";
     }
     
@@ -91,6 +116,7 @@ public class BrecherConfigSpec {
         
         public static final String SEED_STRATEGY = "Seed generation strategy";
         public static final String DEBUG_SEED = "Fixed seed for debug mode";
+        public static final String WEEKLY_RESET_DAY = "Day of week for weekly seed reset (MONDAY-SUNDAY, only used with weekly strategy)";
         
         public static final String ENABLED_DIMENSIONS = "Dimensions to create exploration copies for";
         public static final String BLACKLIST = "Excluded dimensions";
@@ -107,6 +133,9 @@ public class BrecherConfigSpec {
         
         public static final String TELEPORT_COOLDOWN = "Teleport cooldown (seconds)";
         public static final String RESTRICT_TO_CURRENT_DIMENSION = "Restrict Exploration teleports to like dimensions only (e.g., Overworld -> Exploration Overworld, Nether -> Exploration Nether)";
+
+        public static final String DIMENSION_LOCKS_ENABLED = "Enable dimension locks (require advancements to access exploration dimensions)";
+        public static final String DIMENSION_LOCKS = "Map of dimension to required advancement. Players must complete the advancement to access the exploration version";
         
         public static final String CHUNK_UNLOAD_DELAY = "Chunk unload delay (ticks)";
         public static final String MAX_CHUNKS_PER_PLAYER = "Max chunks per player";
@@ -120,6 +149,21 @@ public class BrecherConfigSpec {
         public static final String IMMEDIATE_SPAWN_RADIUS = "Immediate spawn radius (chunks)";
         public static final String EXTENDED_SPAWN_RADIUS = "Extended spawn radius (chunks)";
         
+        public static final String PREGEN_ENABLED = "Enable background chunk pre-generation";
+        public static final String PREGEN_CHUNKS_PER_TICK = "Chunks to generate per processing tick (0 = use ticksPerChunk, 1-10 = fast mode)";
+        public static final String PREGEN_TICK_INTERVAL = "Ticks between generation batches (20 = 1 second)";
+        public static final String PREGEN_TICKS_PER_CHUNK = "Ticks per chunk when chunksPerTick=0 (2 = 1 chunk/2 ticks, 3 = 1 chunk/3 ticks)";
+        public static final String PREGEN_TICKET_DURATION = "Ticks to keep generated chunks loaded";
+        public static final String PREGEN_AUTO_START = "Auto-start generation when dimensions are created";
+        public static final String PREGEN_AUTO_RESUME = "Resume generation tasks after server restart";
+        public static final String PREGEN_MIN_TPS = "Minimum TPS before pausing generation";
+        public static final String PREGEN_MEMORY_THRESHOLD = "Memory usage % threshold for pausing";
+        public static final String PREGEN_DEFAULT_RADIUS = "Default generation radius in chunks";
+        public static final String PREGEN_PAUSE_WITH_PLAYERS = "Pause generation when players are in dimension";
+        public static final String PREGEN_STALE_HOURS = "Hours before considering a task stale";
+        public static final String PREGEN_MAX_TICK_MS = "Max milliseconds per tick for generation loop (prevents lag spikes)";
+        public static final String PREGEN_LOG_INTERVAL = "Log progress every N chunks (100 = frequent, 1000 = less spam)";
+
         public static final String TELEPORT_SAFETY_RADIUS = "Safe teleport search radius";
         public static final String CREATE_EMERGENCY_PLATFORMS = "Create emergency platforms";
         public static final String PREFER_SURFACE_SPAWNS = "Prefer surface spawns over caves";

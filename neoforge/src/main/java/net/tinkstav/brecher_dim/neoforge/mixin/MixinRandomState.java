@@ -50,9 +50,20 @@ public class MixinRandomState {
     private static long brecher_dim$modifySeedForExploration(long seed) {
         // First check if we're creating RandomState for an exploration dimension via context
         ResourceKey<?> currentDimension = ExplorationSeedManager.getCurrentDimension();
+        
+        // Add debug logging to track all RandomState creation
+        if (currentDimension != null) {
+            LOGGER.debug("RandomState.create() called with dimension context: {} (seed: {})", 
+                        currentDimension.location(), seed);
+        } else {
+            LOGGER.debug("RandomState.create() called with no dimension context (seed: {})", seed);
+        }
+        
         if (currentDimension != null && currentDimension instanceof ResourceKey<?>) {
             @SuppressWarnings("unchecked")
             ResourceKey<Level> levelKey = (ResourceKey<Level>) currentDimension;
+            
+            // Double-check this is actually an exploration dimension
             if (ExplorationSeedManager.isExplorationDimension(levelKey)) {
                 // Get the registered custom seed directly, ignoring the input seed
                 java.util.Optional<Long> customSeed = ExplorationSeedManager.getSeedForDimension(levelKey);
@@ -67,16 +78,9 @@ public class MixinRandomState {
                 LOGGER.info("Modifying seed for exploration dimension {}: {} -> {}", 
                            currentDimension.location(), seed, modifiedSeed);
                 return modifiedSeed;
-            }
-        }
-        
-        // Fallback: Check if this seed matches any registered exploration dimension seed
-        // This handles cases where the context might have been cleared too early
-        for (var entry : ExplorationSeedManager.getAllDimensionSeeds().entrySet()) {
-            if (entry.getValue() == seed && ExplorationSeedManager.isExplorationDimension(entry.getKey())) {
-                LOGGER.info("Seed {} matches registered exploration dimension {}, using it directly", 
-                           seed, entry.getKey().location());
-                return seed; // Already the correct seed
+            } else {
+                LOGGER.warn("RandomState.create() called with non-exploration dimension context: {} - this may cause issues!", 
+                           currentDimension.location());
             }
         }
         
@@ -95,9 +99,20 @@ public class MixinRandomState {
     private static long brecher_dim$modifySeedForExplorationProvider(long seed) {
         // First check if we're creating RandomState for an exploration dimension via context
         ResourceKey<?> currentDimension = ExplorationSeedManager.getCurrentDimension();
+        
+        // Add debug logging to track all RandomState creation
+        if (currentDimension != null) {
+            LOGGER.debug("RandomState.create(Provider) called with dimension context: {} (seed: {})", 
+                        currentDimension.location(), seed);
+        } else {
+            LOGGER.debug("RandomState.create(Provider) called with no dimension context (seed: {})", seed);
+        }
+        
         if (currentDimension != null && currentDimension instanceof ResourceKey<?>) {
             @SuppressWarnings("unchecked")
             ResourceKey<Level> levelKey = (ResourceKey<Level>) currentDimension;
+            
+            // Double-check this is actually an exploration dimension
             if (ExplorationSeedManager.isExplorationDimension(levelKey)) {
                 // Get the registered custom seed directly, ignoring the input seed
                 java.util.Optional<Long> customSeed = ExplorationSeedManager.getSeedForDimension(levelKey);
@@ -112,16 +127,9 @@ public class MixinRandomState {
                 LOGGER.info("Modifying seed for exploration dimension {}: {} -> {}", 
                            currentDimension.location(), seed, modifiedSeed);
                 return modifiedSeed;
-            }
-        }
-        
-        // Fallback: Check if this seed matches any registered exploration dimension seed
-        // This handles cases where the context might have been cleared too early
-        for (var entry : ExplorationSeedManager.getAllDimensionSeeds().entrySet()) {
-            if (entry.getValue() == seed && ExplorationSeedManager.isExplorationDimension(entry.getKey())) {
-                LOGGER.info("Seed {} matches registered exploration dimension {}, using it directly", 
-                           seed, entry.getKey().location());
-                return seed; // Already the correct seed
+            } else {
+                LOGGER.warn("RandomState.create(Provider) called with non-exploration dimension context: {} - this may cause issues!", 
+                           currentDimension.location());
             }
         }
         

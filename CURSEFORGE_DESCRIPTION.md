@@ -1,16 +1,16 @@
-Brecher's Exploration Dimensions adds temporary, resettable duplicate dimensions to Minecraft servers - providing unlimited exploration opportunities, even with World Borders enabled!
+Brecher's Exploration Dimensions adds rotating duplicate dimensions to Minecraft servers - providing unlimited exploration opportunities, even with World Borders enabled!
 
 
 # Brecher's Exploration Dimensions 
 
 ## Unlimited Exploration Potential; Itty Bitty Disk Space
 
-Brecher's Explorations Dimensions creates **temporary**, duplicates of existing dimensions that regularly reset/regenerate **with new seeds**. Perfect for servers with wolrd borders enabled, these dimensions offer untouched exploration, mining, and resource gathering opportunities to players while requiring minimal oversight from server admins. No longer do you need to manually prune chunks, reset worlds, fiddle with seeds or regenerate worlds to keep things fresh and disk usage low - this mod does it for you, automatically.
+Brecher's Explorations Dimensions creates **rotating** duplicates of existing dimensions that are replaced with **entirely new worlds** on each server restart. Perfect for servers with world borders enabled, these dimensions offer untouched exploration, mining, and resource gathering opportunities to players while requiring minimal oversight from server admins. No longer do you need to manually prune chunks, reset worlds, fiddle with seeds or regenerate worlds to keep things fresh and disk usage low - this mod does it for you, automatically.
 
 ## Key Features
 
 **Pristine Worlds, Regularly Delivered**
-- "Exploration Dimensions" are reset automatically and regenerated with a new seed on every server restart
+- "Exploration Dimensions" are replaced automatically with new worlds (using incremented IDs) on every server restart
 - Seeds are propagated to both terrain generation and structure generation/placement - a "new" world each cycle
 - Original world remains untouched and protected
 - Stragglers are automatically evacuated from Exploration Dimensions before the dimensions are cycled
@@ -50,7 +50,7 @@ Brecher's Explorations Dimensions creates **temporary**, duplicates of existing 
 - Survival servers with world borders that would otherwise limit exploration, mining, and/or resource gathering opportunities
 - Servers updating to newer versions or adding new mods/content - Exploration Dimensions are all "new" chunks
 - Server admins conscious of disk usage - 
-- SMP servers wanting daily fresh content without world resets
+- SMP servers wanting fresh content on each server restart without affecting main worlds
 - Any server wanting unlimited exploration without world bloat
 
 ## Known Limitations, Future Plans

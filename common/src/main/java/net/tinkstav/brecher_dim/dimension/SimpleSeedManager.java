@@ -21,8 +21,13 @@ package net.tinkstav.brecher_dim.dimension;
 import net.minecraft.resources.ResourceLocation;
 import net.tinkstav.brecher_dim.config.BrecherConfig;
 
+import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneOffset;
+import java.time.temporal.TemporalAdjusters;
 import java.util.Random;
 
 /**
@@ -51,6 +56,16 @@ public class SimpleSeedManager {
             case "date-based":
             case "date":
                 return generateDateBasedSeed(LocalDate.now(), dimension.toString());
+                
+            case "weekly":
+                DayOfWeek resetDay = DayOfWeek.MONDAY; // default
+                try {
+                    String configDay = BrecherConfig.getWeeklyResetDay();
+                    resetDay = DayOfWeek.valueOf(configDay.toUpperCase());
+                } catch (Exception e) {
+                    // Use default MONDAY if parsing fails
+                }
+                return generateWeeklySeed(LocalDate.now(), dimension.toString(), resetDay);
                 
             case "random":
             default:
@@ -95,6 +110,37 @@ public class SimpleSeedManager {
     }
     
     /**
+     * Generates a seed based on the week and dimension name
+     * This ensures the same seed is used for the entire week starting from the reset day
+     * @param date The current date
+     * @param dimensionName The name of the dimension
+     * @param resetDay The day of week when the seed should reset
+     * @return A seed based on the week and dimension
+     */
+    public static long generateWeeklySeed(LocalDate date, String dimensionName, DayOfWeek resetDay) {
+        // Find the most recent occurrence of the reset day (including today if it matches)
+        LocalDate weekStart = date.with(TemporalAdjusters.previousOrSame(resetDay));
+        
+        // Use the week start date's epoch day to generate consistent seed for the week
+        long epochDay = weekStart.toEpochDay();
+        
+        // Hash the dimension name
+        int dimensionHash = dimensionName.hashCode();
+        
+        // Combine epoch day and dimension hash to create a unique seed
+        long seed = (epochDay << 32) | (dimensionHash & 0xFFFFFFFFL);
+        
+        // Apply the same mixing function as daily for good randomness
+        seed ^= (seed >>> 33);
+        seed *= 0xff51afd7ed558ccdL;
+        seed ^= (seed >>> 33);
+        seed *= 0xc4ceb9fe1a85ec53L;
+        seed ^= (seed >>> 33);
+        
+        return seed;
+    }
+    
+    /**
      * Gets a seed for a specific date (useful for testing or special events)
      * @param year The year
      * @param month The month (1-12)
@@ -126,5 +172,79 @@ public class SimpleSeedManager {
         seed ^= (seed >>> 33);
         
         return seed;
+    }
+    
+    /**
+     * Calculates the time remaining until the next seed reset based on the configured strategy.
+     * @return A Duration representing the time until the next reset, or null if the strategy doesn't have a reset period (e.g., random)
+     */
+    public static Duration getTimeUntilSeedReset() {
+        String strategy = BrecherConfig.getSeedStrategy();
+        LocalDateTime now = LocalDateTime.now();
+        
+        switch (strategy.toLowerCase()) {
+            case "date-based":
+            case "date":
+                // Resets daily at midnight
+                LocalDateTime nextMidnight = now.toLocalDate().plusDays(1).atStartOfDay();
+                return Duration.between(now, nextMidnight);
+                
+            case "weekly":
+                // Resets weekly on the configured day
+                DayOfWeek resetDay = DayOfWeek.MONDAY; // default
+                try {
+                    String configDay = BrecherConfig.getWeeklyResetDay();
+                    resetDay = DayOfWeek.valueOf(configDay.toUpperCase());
+                } catch (Exception e) {
+                    // Use default MONDAY if parsing fails
+                }
+                
+                // Find the next occurrence of the reset day
+                LocalDate nextResetDate = now.toLocalDate().with(TemporalAdjusters.next(resetDay));
+                // If today is the reset day and we haven't passed midnight yet, the next reset is next week
+                if (now.getDayOfWeek() == resetDay) {
+                    nextResetDate = now.toLocalDate().plusWeeks(1);
+                }
+                LocalDateTime nextResetDateTime = nextResetDate.atStartOfDay();
+                return Duration.between(now, nextResetDateTime);
+                
+            case "random":
+            default:
+                // Random strategy doesn't have a fixed reset period
+                return null;
+        }
+    }
+    
+    /**
+     * Formats a duration into a human-readable string.
+     * @param duration The duration to format
+     * @return A formatted string like "2 days, 3 hours, 15 minutes"
+     */
+    public static String formatDuration(Duration duration) {
+        if (duration == null) {
+            return "No scheduled reset";
+        }
+        
+        long days = duration.toDays();
+        long hours = duration.toHours() % 24;
+        long minutes = duration.toMinutes() % 60;
+        
+        StringBuilder result = new StringBuilder();
+        
+        if (days > 0) {
+            result.append(days).append(" day").append(days != 1 ? "s" : "");
+        }
+        
+        if (hours > 0) {
+            if (result.length() > 0) result.append(", ");
+            result.append(hours).append(" hour").append(hours != 1 ? "s" : "");
+        }
+        
+        if (minutes > 0 || result.length() == 0) {
+            if (result.length() > 0) result.append(", ");
+            result.append(minutes).append(" minute").append(minutes != 1 ? "s" : "");
+        }
+        
+        return result.toString();
     }
 }

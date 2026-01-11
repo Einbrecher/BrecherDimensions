@@ -1,13 +1,13 @@
 # Brecher's Exploration Dimensions
 
-A Minecraft mod that creates a temporary set of Exploration Dimensions that automatically reset/refresh with a new generation seed at each server restart. This system ensures that Players consistently have access to "new," untouched world generation - whether it be to experience new features/updates, explore pristine POIs, ravage the landscape for resources, or go mining - without the downsides of ballooning world file sizes or the need to constantly prune chunks. Players can access the Exploration Dimensions via slash commands, and any stragglers are automatically evacuated when the dimensions cycle. 
+A Minecraft mod that creates rotating Exploration Dimensions that are automatically replaced with new worlds at each server restart. This system ensures that Players consistently have access to "new," untouched world generation - whether it be to experience new features/updates, explore pristine POIs, ravage the landscape for resources, or go mining - without the downsides of ballooning world file sizes or the need to constantly prune chunks. Players can access the Exploration Dimensions via slash commands, and any stragglers are automatically evacuated when the dimensions rotate. 
 
 This mod looks to solve the problems server operators face when setting world borders or managing world size while also trying to give players enough room to explore. It uses mixins to override Minecraft's native restrictions when it comes to world seeds, so each successive Exploration Dimension truly is different from the last. Some basic popular mod compatibility (Xaero's, Corpse/Gravestone mods, Nature's/Exploration Compasses) is already built in, with more on the way.
 
 ## Features
 
 - **Runtime Dimension Creation**: Dynamically creates "exploration" variants of existing dimensions (e.g., Overworld, Nether, End) at server startup
-- **Daily Reset System**: Exploration Dimensions reset/refresh with new world generation seeds each server restart - Normal dimensions are unaffected
+- **Rotation System**: Exploration Dimensions are replaced with entirely new worlds each server restart - Normal dimensions are unaffected
 - **Slash Command Access**: Players can teleport to/from Exploration Dimensions using slash commands
 - **Performance Optimized**: Aggressive chunk unloading and memory management for server stability
 - **Inventory Preservation**: Optional keepInventory feature for players in Exploration Dimensions
@@ -41,16 +41,16 @@ This mod looks to solve the problems server operators face when setting world bo
    - `brecher_dim-fabric-{version}-1.21.1.jar` for Fabric
    - `brecher_dim-neoforge-{version}-1.21.1.jar` for NeoForge
 3. Place it in your mods folder
-4. Configure the mod:
-   - Fabric: `config/brecher_exploration.properties`
-   - NeoForge: `config/brecher_dim-common.toml`
+4. Configure the mod (config files are in `config/brecher_exploration/`):
+   - Fabric: `config/brecher_exploration/brecher_dimensions.yml`
+   - NeoForge: `config/brecher_exploration/brecher_dimensions.yml`
 
 ## Configuration
 
 ### Core Settings
 - `enabledDimensions` - List of dimensions to create exploration copies for
 - `explorationBorder` - World border size for Exploration Dimensions (-1 for same as parent)
-- `seedStrategy` - Seed generation strategy: "random", "date-based", or "debug"
+- `seedStrategy` - Seed generation strategy: "weekly" (default, resets on Thursday), "random", "date-based", or "debug"
 
 ### Optional Features
 - `preventExplorationSpawnSetting` - Disable spawn setting in Exploration Dimensions (beds/anchors will still explode)
@@ -58,7 +58,7 @@ This mod looks to solve the problems server operators face when setting world bo
 - `deferToCorpseMods` - Let corpse mods handle death instead of built-in keepInventory
 - `disableEnderChests` - Block ender chest access in Exploration Dimensions
 - `clearInventoryOnReturn` - Clear inventory when returning from Exploration Dimensions
-- `cleanupXaeroMapData` - Auto-cleanup Xaero minimap data on dimension reset
+- `cleanupXaeroMapData` - Auto-cleanup Xaero minimap data when dimensions rotate
 
 ### Restrictions
 - `teleportCooldown` - Cooldown between teleports (in seconds)
@@ -67,7 +67,7 @@ This mod looks to solve the problems server operators face when setting world bo
 ### Performance
 - `aggressiveChunkUnloading` - Enable aggressive chunk unloading
 - `maxChunksPerPlayer` - Maximum chunks loaded per player
-- `preventDiskSaves` - Don't save Exploration Dimension chunks to disk; chunks will reset when **unloaded** - not just at server reset (performance heavy)
+- `preventDiskSaves` - Don't save Exploration Dimension chunks to disk; chunks will regenerate when **unloaded** - not just at server restart (performance heavy, disabled by default)
 - `preGenerateSpawnChunks` - Pre-generate spawn chunks on dimension creation
 - `oldDimensionRetentionCount` - How many, if any, "old" Exploration Dimensions should be kept
 

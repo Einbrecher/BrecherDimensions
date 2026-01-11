@@ -333,6 +333,21 @@ public class BrecherDimensionManager {
     }
     
     /**
+     * Get the base dimension for a given exploration dimension.
+     * This provides authoritative lookup based on the actual dimension mappings,
+     * avoiding brittle string parsing for modded dimensions with underscores.
+     *
+     * @param explorationDim The exploration dimension location
+     * @return The base dimension location, or empty if not found
+     */
+    public Optional<ResourceLocation> getBaseDimensionForExploration(ResourceLocation explorationDim) {
+        return dimensionMappings.entrySet().stream()
+            .filter(e -> e.getValue().location().equals(explorationDim))
+            .map(e -> e.getKey().location())
+            .findFirst();
+    }
+
+    /**
      * Check if a dimension is an exploration dimension (static version)
      * Used for compass compatibility mixins
      * @deprecated Use {@link DimensionUtils#isExplorationDimension(ResourceKey)} instead

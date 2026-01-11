@@ -39,7 +39,12 @@ import net.tinkstav.brecher_dim.performance.ChunkManager;
 import net.tinkstav.brecher_dim.teleport.TeleportHandler;
 import net.tinkstav.brecher_dim.util.InventoryKeeper;
 import net.tinkstav.brecher_dim.compat.CorpseModCompat;
+import net.tinkstav.brecher_dim.dimension.SimpleSeedManager;
+import net.tinkstav.brecher_dim.generation.ChunkPreGenerator;
+import net.tinkstav.brecher_dim.util.DimensionEnvironment;
+import net.minecraft.server.level.ServerLevel;
 import org.slf4j.Logger;
+import java.time.Duration;
 
 /**
  * Common event handlers for Brecher's Dimensions.
@@ -71,7 +76,17 @@ public class BrecherEventHandlers {
      */
     public static void onPlayerLeave(ServerPlayer player) {
         LOGGER.debug("Player {} left the server", player.getName().getString());
-        
+
+        // Clear any temporary invulnerability to prevent "god mode" persistence bug.
+        // If player disconnects during the 5-second post-teleport invulnerability window,
+        // their invulnerable state would be saved to disk without this cleanup, causing
+        // them to be permanently invincible on reconnect.
+        if (player.isInvulnerable()) {
+            player.setInvulnerable(false);
+            LOGGER.debug("Cleared invulnerability for disconnecting player {}",
+                player.getName().getString());
+        }
+
         BrecherDimensionManager manager = BrecherDimensions.getDimensionManager();
         if (manager != null) {
             // Record player location before they leave
@@ -112,7 +127,18 @@ public class BrecherEventHandlers {
                     player.sendSystemMessage(Component.literal("[Brecher] Your inventory has been cleared."));
                 }
             } else if (!fromExploration && toExploration) {
-                // Welcome message is sent by TeleportHandler when entering exploration dimensions
+                // Entering exploration dimension (via portal or other means)
+                // Show seed lock information for players entering via portals  
+                // (TeleportHandler shows this for command-based teleports)
+                Duration timeUntilReset = SimpleSeedManager.getTimeUntilSeedReset();
+                if (timeUntilReset != null) {
+                    String timeRemaining = SimpleSeedManager.formatDuration(timeUntilReset);
+                    player.sendSystemMessage(Component.literal("⏱ Seed lock expires in: " + timeRemaining));
+                    player.sendSystemMessage(Component.literal("This dimension will reset with a new seed after the next server restart once the lock expires."));
+                } else {
+                    // Random seed strategy - dimension resets on every restart
+                    player.sendSystemMessage(Component.literal("⚠ This dimension will reset with a new seed after the next server restart."));
+                }
             }
         }
     }
@@ -184,16 +210,17 @@ public class BrecherEventHandlers {
         BrecherDimensionManager manager = BrecherDimensions.getDimensionManager();
         if (manager != null && manager.isExplorationDimension(player.level().dimension().location())) {
             if (BrecherConfig.isPreventExplorationSpawnSetting()) {
-                // Allow beds to explode in Nether dimensions (for mining)
-                String dimPath = player.level().dimension().location().getPath();
-                if (dimPath.contains("the_nether")) {
+                // Allow beds to explode in Nether-like dimensions (for mining)
+                // Uses property-based detection for modded dimension compatibility
+                if (player.level() instanceof ServerLevel serverLevel &&
+                    DimensionEnvironment.getDimensionEnvironment(serverLevel) == DimensionEnvironment.NETHER_LIKE) {
                     // Allow the interaction - bed will explode naturally
                     return InteractionResult.PASS;
                 }
-                
+
                 // Block spawn setting in other dimensions
                 player.displayClientMessage(
-                    Component.literal("You cannot set your spawn in exploration dimensions!"), 
+                    Component.literal("You cannot set your spawn in exploration dimensions!"),
                     true
                 );
                 return InteractionResult.FAIL;
@@ -214,22 +241,25 @@ public class BrecherEventHandlers {
         BrecherDimensionManager manager = BrecherDimensions.getDimensionManager();
         if (manager != null && manager.isExplorationDimension(player.level().dimension().location())) {
             if (BrecherConfig.isPreventExplorationSpawnSetting()) {
-                // Allow respawn anchors to explode in Overworld/End dimensions (for mining)
-                String dimPath = player.level().dimension().location().getPath();
-                if (dimPath.contains("overworld") || dimPath.contains("the_end")) {
-                    // Allow the interaction - respawn anchor will explode naturally
-                    return InteractionResult.PASS;
+                // Allow respawn anchors to explode in non-Nether dimensions (Overworld/End-like)
+                // Uses property-based detection for modded dimension compatibility
+                if (player.level() instanceof ServerLevel serverLevel) {
+                    DimensionEnvironment dimEnv = DimensionEnvironment.getDimensionEnvironment(serverLevel);
+                    if (dimEnv != DimensionEnvironment.NETHER_LIKE) {
+                        // Allow the interaction - respawn anchor will explode naturally
+                        return InteractionResult.PASS;
+                    }
                 }
-                
-                // Block respawn anchor in Nether (where it would actually set spawn)
+
+                // Block respawn anchor in Nether-like dimensions (where it would actually set spawn)
                 player.displayClientMessage(
-                    Component.literal("You cannot set your spawn in exploration dimensions!"), 
+                    Component.literal("You cannot set your spawn in exploration dimensions!"),
                     true
                 );
                 return InteractionResult.FAIL;
             }
         }
-        
+
         return InteractionResult.PASS;
     }
     
@@ -291,6 +321,9 @@ public class BrecherEventHandlers {
         if (tickCounter % BrecherConfig.getChunkCleanupInterval() == 0) {
             ChunkManager.performCleanup(server);
         }
+        
+        // Process chunk pre-generation tasks
+        ChunkPreGenerator.tick(server);
         
         // Entity cleanup based on config interval
         if (tickCounter % BrecherConfig.getEntityCleanupInterval() == 0) {

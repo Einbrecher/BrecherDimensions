@@ -1,6 +1,37 @@
+buildscript {
+    configurations.all {
+        resolutionStrategy {
+            force 'org.ow2.asm:asm:9.7'
+            force 'org.ow2.asm:asm-tree:9.7'
+            force 'org.ow2.asm:asm-commons:9.7'
+            force 'org.ow2.asm:asm-util:9.7'
+            force 'org.ow2.asm:asm-analysis:9.7'
+        }
+    }
+}
+
 plugins {
     id 'fabric-loom'
+    id 'com.github.johnrengelman.shadow'
 }
+
+// Force newer ASM versions that support Java 21 - multiple strategies
+configurations.all {
+    resolutionStrategy {
+        force 'org.ow2.asm:asm:9.7'
+        force 'org.ow2.asm:asm-tree:9.7'
+        force 'org.ow2.asm:asm-commons:9.7'
+        force 'org.ow2.asm:asm-util:9.7'
+        force 'org.ow2.asm:asm-analysis:9.7'
+        
+        eachDependency { details ->
+            if (details.requested.group == 'org.ow2.asm') {
+                details.useVersion '9.7'
+            }
+        }
+    }
+}
+
 
 base {
     archivesName = "${project.archives_base_name}-fabric"
@@ -10,13 +41,30 @@ configurations {
     includeTransitive {
         transitive = true
     }
+    shade
 }
 
 dependencies {
+    // Force newer ASM versions before any other dependencies
+    implementation 'org.ow2.asm:asm:9.7'
+    implementation 'org.ow2.asm:asm-tree:9.7'
+    implementation 'org.ow2.asm:asm-commons:9.7'
+    implementation 'org.ow2.asm:asm-util:9.7'
+    implementation 'org.ow2.asm:asm-analysis:9.7'
+    
+    // Dependency constraints to force ASM versions
+    constraints {
+        implementation('org.ow2.asm:asm:9.7')
+        implementation('org.ow2.asm:asm-tree:9.7')
+        implementation('org.ow2.asm:asm-commons:9.7')
+        implementation('org.ow2.asm:asm-util:9.7')
+        implementation('org.ow2.asm:asm-analysis:9.7')
+    }
+
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     mappings loom.layered() {
         officialMojangMappings()
-        parchment("org.parchmentmc.data:parchment-${minecraft_version}:${parchment_version}@zip")
+        parchment("org.parchmentmc.data:parchment-${project.minecraft_version}:${project.parchment_version}@zip")
     }
     
     modImplementation "net.fabricmc:fabric-loader:${project.fabric_loader_version}"
@@ -28,12 +76,17 @@ dependencies {
     // Include common module
     implementation project(path: ':common', configuration: 'commonJava')
     includeTransitive project(path: ':common')
+    
+    // YAML support for configuration files
+    implementation "org.yaml:snakeyaml:2.2"
+    shade "org.yaml:snakeyaml:2.2"
+    
+    // Also include at runtime for development
+    modRuntimeOnly "org.yaml:snakeyaml:2.2"
 }
 
 loom {
-    mixin {
-        defaultRefmapName = "${mod_id}-fabric.refmap.json"
-    }
+    splitEnvironmentSourceSets()
     
     accessWidenerPath = file("src/main/resources/brecher_dim.accesswidener")
     
@@ -75,6 +128,21 @@ sourceSets {
     }
 }
 
+// Java configuration
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+    
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+}
+
 processResources {
     // Handle duplicate files from common module
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -103,7 +171,24 @@ jar {
     from("LICENSE") {
         rename { "${it}_${project.mod_name}" }
     }
+    archiveClassifier = 'slim'
 }
+
+shadowJar {
+    configurations = [project.configurations.shade]
+    archiveClassifier = ''
+    
+    // Relocate SnakeYAML to avoid conflicts
+    relocate 'org.yaml.snakeyaml', 'net.tinkstav.brecher_dim.shaded.snakeyaml'
+    
+    // Include the main jar content
+    from(sourceSets.main.output)
+    
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// Make build depend on shadowJar
+build.dependsOn shadowJar
 
 // Fix duplicate resources in sourcesJar
 tasks.named('sourcesJar') {

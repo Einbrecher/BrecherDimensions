@@ -58,12 +58,23 @@ public class ChunkManager {
     }
 
     /**
-     * Configure a dimension for exploration mode with aggressive chunk unloading
+     * Configure a dimension for exploration mode.
+     * Initializes chunk tracking data structures for the dimension.
+     * Actual chunk unloading behavior is controlled via config settings
+     * (aggressiveChunkUnloading, chunkUnloadDelay, etc.) and enforced
+     * during tickChunkCleanup() calls.
+     *
+     * @param level the server level to configure for exploration
      */
     public static void configureForExploration(ServerLevel level) {
-        // This will be implemented with platform-specific optimizations
-        // For now, just log the configuration
-        LOGGER.info("Configured {} for exploration mode", level.dimension().location());
+        ResourceLocation dimId = level.dimension().location();
+
+        // Initialize tracking data structures for this dimension
+        loadedChunks.computeIfAbsent(dimId, k -> ConcurrentHashMap.newKeySet());
+        chunkLoadCounts.putIfAbsent(dimId, 0);
+        chunkUnloadCounts.putIfAbsent(dimId, 0);
+
+        LOGGER.debug("Initialized chunk tracking for exploration dimension: {}", dimId);
     }
     
     /**

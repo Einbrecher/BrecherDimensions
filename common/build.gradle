@@ -20,6 +20,9 @@ artifacts {
 dependencies {
     // We only depend on vanilla Minecraft here
     // Platform-specific dependencies go in their respective modules
+    
+    // YAML support (compile only - will be shaded by platform modules)
+    compileOnly "org.yaml:snakeyaml:2.2"
 }
 
 java {

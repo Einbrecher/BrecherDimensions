@@ -272,11 +272,15 @@ public abstract class MixinMinecraftServer implements IServerDimensionAccessor {
                 null  // random sequence source
             );
             
-            // Clear the dimension context on the next tick
-            // This ensures ChunkGeneratorStructureState has been created before we clear it
+            // Clear the dimension context immediately after ServerLevel creation
+            // This prevents the context from affecting other dimension processing
+            ExplorationSeedManager.clearCurrentDimension();
+            LOGGER.info("Immediately cleared dimension context for {} after creation", dimensionKey.location());
+            
+            // Also schedule a cleanup on next tick as a safety measure
             server.execute(() -> {
                 ExplorationSeedManager.clearCurrentDimension();
-                LOGGER.info("Cleared dimension context for {} after initialization", dimensionKey.location());
+                LOGGER.debug("Safety cleanup of dimension context completed");
             });
             
             // Initialize world border

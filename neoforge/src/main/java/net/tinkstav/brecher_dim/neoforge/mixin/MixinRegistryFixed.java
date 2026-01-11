@@ -26,6 +26,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.tinkstav.brecher_dim.BrecherDimensions;
 import net.tinkstav.brecher_dim.accessor.IRegistryAccessor;
+import net.tinkstav.brecher_dim.exception.RegistryDiscoveryException;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -97,18 +98,29 @@ public class MixinRegistryFixed<T> implements IRegistryAccessor<T> {
             }
             
             if (brecher_dim$byValue == null || brecher_dim$byLocation == null) {
-                LOGGER.warn("Could not find all registry fields via reflection. byValue: {}, byLocation: {}", 
+                String errorMsg = String.format(
+                    "CRITICAL: Brecher's Dimensions failed to discover required registry fields. " +
+                    "byValue=%s, byLocation=%s. " +
+                    "This is likely caused by a Minecraft version mismatch or mod conflict. " +
+                    "The mod cannot safely operate and will be disabled.",
                     brecher_dim$byValue != null, brecher_dim$byLocation != null);
-                LOGGER.info("Registry will operate with limited functionality");
-            } else {
-                LOGGER.info("Successfully discovered all registry fields");
+                LOGGER.error(errorMsg);
+                brecher_dim$reflectionInitialized = true; // Mark as initialized to prevent retry loops
+                throw new RegistryDiscoveryException(errorMsg);
             }
-            
+
+            LOGGER.info("Successfully discovered all registry fields");
             brecher_dim$reflectionInitialized = true;
-            
+
+        } catch (RegistryDiscoveryException e) {
+            // Re-throw discovery exceptions - these are critical failures
+            throw e;
         } catch (Exception e) {
-            LOGGER.error("Failed to initialize reflection for registry fields", e);
-            brecher_dim$reflectionInitialized = true; // Prevent retries
+            String errorMsg = "CRITICAL: Unexpected error during registry field discovery. " +
+                "Brecher's Dimensions cannot safely operate.";
+            LOGGER.error(errorMsg, e);
+            brecher_dim$reflectionInitialized = true; // Prevent retry loops
+            throw new RegistryDiscoveryException(errorMsg, e);
         }
     }
     

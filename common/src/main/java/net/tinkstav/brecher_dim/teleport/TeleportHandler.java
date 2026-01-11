@@ -20,7 +20,10 @@ package net.tinkstav.brecher_dim.teleport;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.TicketType;
 import net.minecraft.server.TickTask;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
@@ -36,22 +39,24 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.entity.Entity;
 import net.tinkstav.brecher_dim.BrecherDimensions;
 import net.tinkstav.brecher_dim.config.BrecherConfig;
 import net.tinkstav.brecher_dim.data.BrecherSavedData;
 import net.tinkstav.brecher_dim.data.ReturnPosition;
-import net.tinkstav.brecher_dim.data.PlayerSnapshot;
 import net.tinkstav.brecher_dim.dimension.BrecherDimensionManager;
+import net.tinkstav.brecher_dim.dimension.SimpleSeedManager;
 import net.tinkstav.brecher_dim.platform.Services;
+import net.tinkstav.brecher_dim.util.DimensionEnvironment;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 
 public class TeleportHandler {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int MAX_ATTEMPTS = 100;
-    private static final Map<UUID, PlayerSnapshot> emergencySnapshots = new ConcurrentHashMap<>();
     private static final Map<UUID, Long> lastTeleportTime = new ConcurrentHashMap<>();
     
     private static final ScheduledExecutorService CLEANUP_EXECUTOR = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -61,30 +66,52 @@ public class TeleportHandler {
     });
     private static final long CLEANUP_INTERVAL_MINUTES = 5;
     private static final long DATA_RETENTION_MINUTES = 30;
-    private static final int MAX_SNAPSHOTS = 1000;
     private static final int MAX_TELEPORT_RECORDS = 1000;
-    
+    // 5ms = 10% of tick budget (50ms per tick at 20 TPS); prevents server lag during teleport.
+    // If no safe position is found within budget, emergency platform is created as fallback.
+    private static final long MAX_SEARCH_TIME_MS = 5;
+
+    /**
+     * Dismounts the player from any vehicle before teleportation.
+     * This prevents glitchy behavior, ghost entities, or client desync when
+     * teleporting while riding a horse, boat, minecart, or other vehicle.
+     *
+     * @param player The player to dismount
+     */
+    private static void dismountBeforeTeleport(ServerPlayer player) {
+        if (player.getVehicle() != null) {
+            Entity vehicle = player.getVehicle();
+            LOGGER.debug("Dismounting player {} from {} before teleport",
+                player.getName().getString(), vehicle.getType().getDescriptionId());
+            player.stopRiding();
+            player.displayClientMessage(
+                Component.literal("Dismounted for dimensional travel.")
+                    .withStyle(ChatFormatting.YELLOW),
+                false
+            );
+        }
+        // Also eject any passengers riding the player (rare but possible with mods)
+        if (!player.getPassengers().isEmpty()) {
+            LOGGER.debug("Ejecting {} passengers from player {} before teleport",
+                player.getPassengers().size(), player.getName().getString());
+            player.ejectPassengers();
+        }
+    }
+
     static {
-        // Schedule periodic cleanup of old data
+        // Schedule periodic cleanup of old teleport time data
         CLEANUP_EXECUTOR.scheduleAtFixedRate(() -> {
             try {
                 long cutoffTime = System.currentTimeMillis() - (DATA_RETENTION_MINUTES * 60 * 1000);
-                
-                // Clean up old emergency snapshots
-                emergencySnapshots.entrySet().removeIf(entry -> {
-                    PlayerSnapshot snapshot = entry.getValue();
-                    return snapshot != null && snapshot.timestamp() < cutoffTime;
-                });
-                
+
                 // Clean up old teleport times
                 lastTeleportTime.entrySet().removeIf(entry -> {
                     Long time = entry.getValue();
                     return time != null && time < cutoffTime;
                 });
-                
-                LOGGER.debug("Cleaned up teleport data. Snapshots: {}, Times: {}", 
-                    emergencySnapshots.size(), lastTeleportTime.size());
-                    
+
+                LOGGER.debug("Cleaned up teleport data. Times: {}", lastTeleportTime.size());
+
             } catch (Exception e) {
                 LOGGER.error("Error during teleport data cleanup", e);
             }
@@ -99,15 +126,10 @@ public class TeleportHandler {
         if (!checkTeleportCooldown(player)) {
             return;
         }
-        
-        // Create emergency snapshot
-        if (emergencySnapshots.size() >= MAX_SNAPSHOTS) {
-            emergencySnapshots.entrySet().stream()
-                .min(Map.Entry.comparingByValue((a, b) -> Long.compare(a.timestamp(), b.timestamp())))
-                .ifPresent(entry -> emergencySnapshots.remove(entry.getKey()));
-        }
-        emergencySnapshots.put(player.getUUID(), PlayerSnapshot.create(player));
-        
+
+        // Dismount player from any vehicle to prevent glitches
+        dismountBeforeTeleport(player);
+
         // Save return position
         BrecherSavedData data = BrecherSavedData.get(player.server);
         ResourceLocation currentDim = player.level().dimension().location();
@@ -147,24 +169,52 @@ public class TeleportHandler {
         
         // Record dimension access
         data.recordDimensionAccess(destination.dimension().location(), player.getUUID());
-        
+
+        // Track whether preTeleport was called to ensure postTeleport is only called if preTeleport succeeded.
+        // This prevents mismatched event callbacks when teleport fails early.
+        boolean preTeleportCalled = false;
+
         // Execute teleportation
         try {
             BlockPos spawnPoint = destination.getSharedSpawnPos();
             BlockPos safePos;
-            
+
+            // Force-load the center chunk before searching for safe position
+            // This prevents the "emergency platform trap" where all distant teleports
+            // would fail to find terrain because chunks aren't loaded
+            ChunkPos centerChunk = new ChunkPos(spawnPoint);
+            destination.getChunkSource().addRegionTicket(TicketType.PORTAL, centerChunk, 3, spawnPoint);
+
             // Special handling for different dimension types
-            String dimPath = destination.dimension().location().getPath();
-            if (dimPath.contains("the_nether")) {
+            // Uses dimension properties (ultraWarm, fixedTime) for better modded dimension compatibility
+            DimensionEnvironment dimEnv = DimensionEnvironment.getDimensionEnvironment(destination);
+            if (dimEnv == DimensionEnvironment.NETHER_LIKE) {
                 safePos = findNetherSafePosition(destination, spawnPoint);
-            } else if (dimPath.contains("the_end")) {
+            } else if (dimEnv == DimensionEnvironment.END_LIKE) {
                 safePos = findEndSafePosition(destination);
             } else {
                 safePos = findSafePosition(destination, spawnPoint);
             }
             
             if (safePos == null) {
-                LOGGER.warn("Could not find safe position in {} - creating emergency platform", 
+                // Initial search failed - chunk ticket was async and chunk may not be loaded yet
+                // Force synchronous chunk load and retry before falling back to emergency platform
+                // WARN: This may cause a brief lag spike on first teleport to ungenerated chunks
+                LOGGER.debug("Initial safe position search failed, forcing synchronous chunk load at {}", centerChunk);
+                destination.getChunk(spawnPoint.getX() >> 4, spawnPoint.getZ() >> 4, ChunkStatus.FULL);
+
+                // Retry the search now that chunk is loaded
+                if (dimEnv == DimensionEnvironment.NETHER_LIKE) {
+                    safePos = findNetherSafePosition(destination, spawnPoint);
+                } else if (dimEnv == DimensionEnvironment.END_LIKE) {
+                    safePos = findEndSafePosition(destination);
+                } else {
+                    safePos = findSafePosition(destination, spawnPoint);
+                }
+            }
+
+            if (safePos == null) {
+                LOGGER.warn("Could not find safe position in {} after chunk load - creating emergency platform",
                     destination.dimension().location());
                 safePos = createEmergencyPlatform(destination, spawnPoint);
             }
@@ -181,19 +231,26 @@ public class TeleportHandler {
             // Perform teleportation
             Vec3 targetPos = new Vec3(safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5);
             Services.TELEPORT.preTeleport(player, destination);
+            preTeleportCalled = true;
             boolean success = Services.TELEPORT.teleportPlayer(player, destination, targetPos, player.getYRot(), player.getXRot());
             
             if (success) {
-                // Grant brief invulnerability and effects
+                // Grant brief invulnerability and effects (5 seconds = 100 ticks)
                 player.setInvulnerable(true);
                 player.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, 100, 4));
                 player.addEffect(new MobEffectInstance(MobEffects.SLOW_FALLING, 200, 0));
-                
-                player.server.tell(new TickTask(player.server.getTickCount() + 100, () -> {
-                    player.setInvulnerable(false);
-                    emergencySnapshots.remove(player.getUUID());
+
+                // Schedule removal of invulnerability after 100 ticks
+                // Use UUID lookup to handle player disconnect/reconnect during the 5 second window
+                UUID playerUuid = player.getUUID();
+                net.minecraft.server.MinecraftServer server = player.server;
+                server.tell(new TickTask(server.getTickCount() + 100, () -> {
+                    ServerPlayer currentPlayer = server.getPlayerList().getPlayer(playerUuid);
+                    if (currentPlayer != null) {
+                        currentPlayer.setInvulnerable(false);
+                    }
                 }));
-                
+
                 // Send appropriate message
                 if (isFromExploration) {
                     player.displayClientMessage(
@@ -210,12 +267,46 @@ public class TeleportHandler {
                             false
                         );
                     });
+                    
+                    // Display seed lock information when teleporting between exploration dimensions
+                    Duration timeUntilReset = SimpleSeedManager.getTimeUntilSeedReset();
+                    if (timeUntilReset != null) {
+                        String timeRemaining = SimpleSeedManager.formatDuration(timeUntilReset);
+                        player.displayClientMessage(
+                            Component.literal("⏱ Seed lock expires in: " + timeRemaining)
+                                .withStyle(ChatFormatting.YELLOW),
+                            false
+                        );
+                    }
                 } else {
                     String welcomeMsg = BrecherConfig.getWelcomeMessage();
                     player.displayClientMessage(
                         Component.literal(welcomeMsg).withStyle(ChatFormatting.GREEN),
                         false
                     );
+                    
+                    // Display seed lock information
+                    Duration timeUntilReset = SimpleSeedManager.getTimeUntilSeedReset();
+                    if (timeUntilReset != null) {
+                        String timeRemaining = SimpleSeedManager.formatDuration(timeUntilReset);
+                        player.displayClientMessage(
+                            Component.literal("⏱ Seed lock expires in: " + timeRemaining)
+                                .withStyle(ChatFormatting.YELLOW),
+                            false
+                        );
+                        player.displayClientMessage(
+                            Component.literal("This dimension will reset with a new seed after the next server restart once the lock expires.")
+                                .withStyle(ChatFormatting.GRAY),
+                            false
+                        );
+                    } else {
+                        // Random seed strategy - dimension resets on every restart
+                        player.displayClientMessage(
+                            Component.literal("⚠ This dimension will reset with a new seed after the next server restart.")
+                                .withStyle(ChatFormatting.YELLOW),
+                            false
+                        );
+                    }
                 }
                 
                 // Track in dimension manager
@@ -234,28 +325,39 @@ public class TeleportHandler {
                 throw new RuntimeException("Teleportation failed");
             }
         } catch (Exception e) {
-            LOGGER.error("Failed to teleport player", e);
+            LOGGER.error("Failed to teleport player {} to {}: {}",
+                player.getName().getString(),
+                destination.dimension().location(),
+                e.getMessage());
             player.displayClientMessage(
                 Component.literal("Teleportation failed! Please try again.")
                     .withStyle(ChatFormatting.RED),
                 false
             );
-            
-            // Clean up on failure
-            emergencySnapshots.remove(player.getUUID());
-            data.clearReturnPosition(player.getUUID());
+
+            // Only clear return position if we failed initial entry (not exploration-to-exploration)
+            // This preserves the original return coordinates when inter-exploration teleport fails
+            if (!isFromExploration) {
+                data.clearReturnPosition(player.getUUID());
+            }
         } finally {
-            // Post-teleport cleanup
-            Services.TELEPORT.postTeleport(player, player.level() instanceof ServerLevel ? (ServerLevel) player.level() : null);
+            // Only call postTeleport if preTeleport was successfully called
+            // This prevents mismatched event callbacks when teleport fails early
+            if (preTeleportCalled) {
+                Services.TELEPORT.postTeleport(player, player.level() instanceof ServerLevel ? (ServerLevel) player.level() : null);
+            }
         }
     }
-    
+
     /**
      * Return a player from an exploration dimension
      */
     public static void returnFromExploration(ServerPlayer player) {
+        // Dismount player from any vehicle to prevent glitches
+        dismountBeforeTeleport(player);
+
         BrecherSavedData data = BrecherSavedData.get(player.server);
-        
+
         LOGGER.debug("Attempting to return player {} from exploration dimension", player.getName().getString());
         
         data.getReturnPosition(player.getUUID()).ifPresentOrElse(returnPos -> {
@@ -275,8 +377,9 @@ public class TeleportHandler {
                 BlockPos safePos = returnPos.pos();
                 if (!isSafePosition(returnLevel, safePos)) {
                     // If preferring surface spawns and original position is underground, try to find surface first
-                    if (BrecherConfig.isPreferSurfaceSpawns() && 
-                        returnLevel.dimension().location().getPath().contains("overworld") &&
+                    // Only for overworld-like dimensions where surface spawns make sense
+                    if (BrecherConfig.isPreferSurfaceSpawns() &&
+                        DimensionEnvironment.getDimensionEnvironment(returnLevel) == DimensionEnvironment.OVERWORLD_LIKE &&
                         !canSeeSky(returnLevel, safePos)) {
                         BlockPos surfacePos = findSurfacePosition(returnLevel, safePos);
                         if (surfacePos != null) {
@@ -299,13 +402,17 @@ public class TeleportHandler {
                 }
                 // For saved positions, we now try to find surface alternatives if configured and appropriate
                 
-                LOGGER.debug("Teleporting player {} to {} at position {}", 
+                LOGGER.debug("Teleporting player {} to {} at position {}",
                     player.getName().getString(), returnLevel.dimension().location(), safePos);
-                
+
+                // Track whether preTeleport was called to ensure postTeleport is only called if preTeleport succeeded
+                boolean preTeleportCalled = false;
+
                 try {
                     Vec3 targetPos = new Vec3(safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5);
                     Services.TELEPORT.preTeleport(player, returnLevel);
-                    boolean success = Services.TELEPORT.teleportPlayer(player, returnLevel, targetPos, 
+                    preTeleportCalled = true;
+                    boolean success = Services.TELEPORT.teleportPlayer(player, returnLevel, targetPos,
                                                                       returnPos.yRot(), returnPos.xRot());
                     
                     if (success) {
@@ -349,8 +456,10 @@ public class TeleportHandler {
                         throw new RuntimeException("Return teleportation failed");
                     }
                 } finally {
-                    // Post-teleport cleanup
-                    Services.TELEPORT.postTeleport(player, returnLevel);
+                    // Only call postTeleport if preTeleport was successfully called
+                    if (preTeleportCalled) {
+                        Services.TELEPORT.postTeleport(player, returnLevel);
+                    }
                 }
             } else {
                 LOGGER.error("Return level {} not found for player {}", 
@@ -425,12 +534,16 @@ public class TeleportHandler {
         }
         
         final BlockPos finalSafeSpawn = safeSpawn;
-        
+
+        // Track whether preTeleport was called to ensure postTeleport is only called if preTeleport succeeded
+        boolean preTeleportCalled = false;
+
         // Execute teleport
         try {
             Vec3 targetPos = new Vec3(finalSafeSpawn.getX() + 0.5, finalSafeSpawn.getY(), finalSafeSpawn.getZ() + 0.5);
             Services.TELEPORT.preTeleport(player, overworld);
-            boolean success = Services.TELEPORT.teleportPlayer(player, overworld, targetPos, 
+            preTeleportCalled = true;
+            boolean success = Services.TELEPORT.teleportPlayer(player, overworld, targetPos,
                                                               player.getYRot(), player.getXRot());
             
             if (success) {
@@ -451,10 +564,13 @@ public class TeleportHandler {
                 );
             }
         } finally {
-            Services.TELEPORT.postTeleport(player, overworld);
+            // Only call postTeleport if preTeleport was successfully called
+            if (preTeleportCalled) {
+                Services.TELEPORT.postTeleport(player, overworld);
+            }
         }
     }
-    
+
     /**
      * Find a safe position near the target
      * Note: This method is used for:
@@ -466,14 +582,18 @@ public class TeleportHandler {
      * NOT to saved return positions (which are handled separately)
      */
     private static BlockPos findSafePosition(ServerLevel level, BlockPos center) {
+        // Determine dimension environment once for efficiency
+        DimensionEnvironment dimEnv = DimensionEnvironment.getDimensionEnvironment(level);
+
         // Check if center is safe first
         if (isSafePosition(level, center)) {
             // For exploration dimensions, check if we should prefer surface
-            if (BrecherConfig.isPreferSurfaceSpawns() && 
-                level.dimension().location().getPath().contains("overworld") &&
+            // Only for overworld-like dimensions where surface spawns make sense
+            if (BrecherConfig.isPreferSurfaceSpawns() &&
+                dimEnv == DimensionEnvironment.OVERWORLD_LIKE &&
                 BrecherDimensions.getDimensionManager() != null &&
                 BrecherDimensions.getDimensionManager().isExplorationDimension(level.dimension().location())) {
-                
+
                 // If the center is in a cave, try to find a surface position first
                 if (!canSeeSky(level, center)) {
                     BlockPos surfacePos = findSurfacePosition(level, center, 16);
@@ -485,26 +605,41 @@ public class TeleportHandler {
             }
             return center;
         }
-        
-        // Progressive search system
-        boolean isNether = level.dimension().location().getPath().contains("nether");
-        boolean preferSurface = BrecherConfig.isPreferSurfaceSpawns() && 
-                               level.dimension().location().getPath().contains("overworld");
-        
+
+        // Progressive search system - use dimension environment for behavior
+        boolean isNether = (dimEnv == DimensionEnvironment.NETHER_LIKE);
+        boolean preferSurface = BrecherConfig.isPreferSurfaceSpawns() &&
+                               (dimEnv == DimensionEnvironment.OVERWORLD_LIKE);
+
+        // Track time budget to prevent blocking main thread too long
+        long startTime = System.currentTimeMillis();
+
         // Phase 1: Try small radius (8 blocks) for nearby positions
         BlockPos nearbyPos = searchInRadius(level, center, 8, preferSurface);
         if (nearbyPos != null) {
             LOGGER.debug("Found safe position within 8 blocks of center");
             return nearbyPos;
         }
-        
+
+        // Check time budget before continuing
+        if (System.currentTimeMillis() - startTime > MAX_SEARCH_TIME_MS) {
+            LOGGER.warn("Safe position search exceeded {}ms budget at radius 8 - aborting to emergency platform", MAX_SEARCH_TIME_MS);
+            return null;
+        }
+
         // Phase 2: Expand to medium radius (16 blocks)
         BlockPos mediumPos = searchInRadius(level, center, 16, preferSurface);
         if (mediumPos != null) {
             LOGGER.debug("Found safe position within 16 blocks of center");
             return mediumPos;
         }
-        
+
+        // Check time budget before continuing
+        if (System.currentTimeMillis() - startTime > MAX_SEARCH_TIME_MS) {
+            LOGGER.warn("Safe position search exceeded {}ms budget at radius 16 - aborting to emergency platform", MAX_SEARCH_TIME_MS);
+            return null;
+        }
+
         // Phase 3: For Nether or if configured, try larger radius (32 blocks)
         if (isNether || BrecherConfig.isExtendedSearchRadius()) {
             BlockPos farPos = searchInRadius(level, center, 32, preferSurface);
@@ -512,7 +647,13 @@ public class TeleportHandler {
                 LOGGER.debug("Found safe position within 32 blocks of center");
                 return farPos;
             }
-            
+
+            // Check time budget before continuing
+            if (System.currentTimeMillis() - startTime > MAX_SEARCH_TIME_MS) {
+                LOGGER.warn("Safe position search exceeded {}ms budget at radius 32 - aborting to emergency platform", MAX_SEARCH_TIME_MS);
+                return null;
+            }
+
             // Phase 4: For Nether only, last attempt with 48 blocks
             if (isNether) {
                 BlockPos veryFarPos = searchInRadius(level, center, 48, preferSurface);
@@ -522,7 +663,13 @@ public class TeleportHandler {
                 }
             }
         }
-        
+
+        // Check time budget before final attempt
+        if (System.currentTimeMillis() - startTime > MAX_SEARCH_TIME_MS) {
+            LOGGER.warn("Safe position search exceeded {}ms budget - aborting to emergency platform", MAX_SEARCH_TIME_MS);
+            return null;
+        }
+
         // If surface preference was on, try one more time without it
         if (preferSurface) {
             LOGGER.debug("Retrying search without surface preference");
@@ -531,7 +678,7 @@ public class TeleportHandler {
                 return anyPos;
             }
         }
-        
+
         return null;
     }
     
@@ -588,6 +735,11 @@ public class TeleportHandler {
      * Find safe position in a vertical column
      */
     private static BlockPos findSafeInColumn(ServerLevel level, int x, int centerY, int z) {
+        // Skip unloaded chunks to prevent synchronous loading
+        if (!level.hasChunk(x >> 4, z >> 4)) {
+            return null;
+        }
+
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(x, centerY, z);
         
         // Search upward first
@@ -651,6 +803,12 @@ public class TeleportHandler {
      * Find the highest solid block at the given x,z coordinates
      */
     private static BlockPos findHighestSolidBlock(ServerLevel level, int x, int z) {
+        // Prevent synchronous chunk loading for OUTER search radius
+        // Center chunk is pre-loaded by teleport handler, but radius search should skip unloaded
+        if (!level.hasChunk(x >> 4, z >> 4)) {
+            return null;
+        }
+
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(x, level.getMaxBuildHeight() - 1, z);
         
         // Start from actual max build height to find true surface (no artificial limit)
@@ -868,11 +1026,12 @@ public class TeleportHandler {
         }
         
         // Soul sand and soul soil are fine - they're just slower to walk on
-        
-        // Check surrounding blocks for liquids (expanded check for Nether)
-        boolean isNether = level.dimension().location().getPath().contains("nether");
-        int checkRadius = isNether ? 2 : 1; // Wider check in Nether
-        int checkHeight = isNether ? 3 : 1; // Check more vertical levels in Nether
+
+        // Check surrounding blocks for liquids (expanded check for Nether-like dimensions)
+        // Uses dimension properties for better modded dimension compatibility
+        boolean isNetherLike = DimensionEnvironment.getDimensionEnvironment(level) == DimensionEnvironment.NETHER_LIKE;
+        int checkRadius = isNetherLike ? 2 : 1; // Wider check in Nether-like dimensions
+        int checkHeight = isNetherLike ? 3 : 1; // Check more vertical levels in Nether-like dimensions
         
         for (int y = -1; y <= checkHeight; y++) {
             for (int x = -checkRadius; x <= checkRadius; x++) {
@@ -900,7 +1059,8 @@ public class TeleportHandler {
         }
         
         // Additional Nether safety: Check for lava lakes below (reduced from 5 to 2 blocks)
-        if (isNether) {
+        // Uses ultraWarm property for better modded dimension compatibility
+        if (DimensionEnvironment.getDimensionEnvironment(level) == DimensionEnvironment.NETHER_LIKE) {
             // Only check up to 2 blocks below for immediate danger
             for (int y = 1; y <= 2; y++) {
                 BlockPos belowPos = pos.below(y);
@@ -1042,10 +1202,9 @@ public class TeleportHandler {
             CLEANUP_EXECUTOR.shutdownNow();
             Thread.currentThread().interrupt();
         }
-        
-        emergencySnapshots.clear();
+
         lastTeleportTime.clear();
-        
+
         LOGGER.info("TeleportHandler cleanup complete");
     }
 }

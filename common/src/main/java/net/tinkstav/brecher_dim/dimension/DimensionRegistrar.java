@@ -27,6 +27,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.tinkstav.brecher_dim.BrecherDimensions;
 import net.tinkstav.brecher_dim.config.BrecherConfig;
+import net.tinkstav.brecher_dim.generation.ChunkPreGenerator;
 import org.slf4j.Logger;
 
 import java.util.*;
@@ -35,7 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Handles creation of exploration dimensions at server startup
  * Creates all dimensions specified in enabledDimensions config using runtime registry manipulation
- * Dimensions persist for the entire server session and are recreated with new seeds on restart
+ * Dimensions persist until server restart when they are replaced by new dimensions with incremented IDs
  */
 public class DimensionRegistrar {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -114,6 +115,19 @@ public class DimensionRegistrar {
         }
         
         LOGGER.info("Finished creating {} exploration dimensions", runtimeDimensions.size());
+        
+        // Resume saved pre-generation tasks
+        ChunkPreGenerator.resumeSavedTasks(server);
+        
+        // Auto-start generation if configured
+        if (BrecherConfig.isPregenAutoStart()) {
+            for (ResourceKey<Level> explorationKey : runtimeDimensions.keySet()) {
+                if (!ChunkPreGenerator.hasActiveTask(explorationKey)) {
+                    LOGGER.info("Auto-starting chunk generation for {}", explorationKey.location());
+                    ChunkPreGenerator.startGeneration(server, explorationKey, 0);
+                }
+            }
+        }
     }
     
     /**
